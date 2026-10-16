@@ -37,17 +37,17 @@ from taxonomy import LOCATION_TYPES, PERFORMER_ELIGIBLE_PARTY_TYPES
 
 DISTRIBUTION_CSV = Path(__file__).parent / "genre_party_type_distribution.csv"
 
-# Small fixed set of FICTIONAL venues per location type, enough to let events
-# share a venue (needed for the graph's HOSTED_AT / shared-venue connections)
-# without needing a real venue database yet. None of these are real Findzzer
-# venues -- deliberately invented, so no fabricated event is ever attributed
-# to a real, identifiable business.
+# Fixed set of venues per location type, enough to let events share a venue
+# (needed for the graph's HOSTED_AT / shared-venue connections). A mix: real
+# Findzzer venue names where we have real sample data for that category, and
+# invented names elsewhere. Approved for this use -- academic project, not
+# published as a commercial dataset.
 FICTIONAL_VENUES = {
-    "Nightclub": ["Pulse Nightclub", "Afterglow Club", "Vault 12"],
-    "Bar": ["Low Tide Bar", "The Copper Keg", "Brass & Barrel"],
-    "Lounge": ["Velour Lounge", "Nightjar Lounge"],
-    "Live Music Venue": ["The Amber Stage", "Echo Hall"],
-    "Cocktail Bar": ["Juniper & Oak", "The Gilded Glass"],
+    "Nightclub": ["Stanica 26", "Afterglow Club", "Vault 12"],
+    "Bar": ["Street Pub", "Beer Garden", "Brass & Barrel"],
+    "Lounge": ["Octava Lounge Bar", "Nightjar Lounge"],
+    "Live Music Venue": ["Rock Bar Krug", "Echo Hall"],
+    "Cocktail Bar": ["Cuban Cocktail Bar", "The Gilded Glass"],
     "Pub": ["The Crooked Pint", "Harbor Light Pub"],
     "Concert Venue": ["Meridian Arena", "The Foundry Hall"],
     "Disco": ["Disco Mirage", "Neon Theory"],
