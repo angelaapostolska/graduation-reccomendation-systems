@@ -9,3 +9,6 @@ venv/
 # Public business and artist information; deliberately not published in this repo.
 generator/data/*
 !generator/data/README.md
+
+# Generated datasets (real extracts, rewritten descriptions, synthetic events). Local only.
+data/
