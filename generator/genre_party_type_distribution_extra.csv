@@ -1,0 +1,83 @@
+music_genre,party_type,users_count,percentage
+Ex-Yu Hits,Standup Comedy,37,8.13
+Pop,Standup Comedy,33,7.25
+Hip-Hop,Standup Comedy,32,7.03
+Macedonian,Standup Comedy,31,6.81
+House,Standup Comedy,29,6.37
+Balkan Party,Standup Comedy,28,6.15
+Rock,Standup Comedy,27,5.93
+Techno,Standup Comedy,22,4.84
+Disco,Standup Comedy,21,4.62
+Jazz,Standup Comedy,21,4.62
+Retro,Standup Comedy,20,4.4
+Electronic,Standup Comedy,18,3.96
+R&B,Standup Comedy,18,3.96
+Rap,Standup Comedy,15,3.3
+Latin,Standup Comedy,13,2.86
+Country,Standup Comedy,13,2.86
+Gig,Standup Comedy,11,2.42
+Vinyl,Standup Comedy,11,2.42
+Folk,Standup Comedy,11,2.42
+Ex-Yu Hits,Theater,31,6.81
+Rock,Theater,30,6.59
+Pop,Theater,27,5.93
+Hip-Hop,Theater,23,5.05
+Balkan Party,Theater,22,4.84
+Macedonian,Theater,22,4.84
+Disco,Theater,21,4.62
+Techno,Theater,20,4.4
+House,Theater,20,4.4
+Jazz,Theater,17,3.74
+Retro,Theater,17,3.74
+Electronic,Theater,15,3.3
+Classical,Theater,15,3.3
+R&B,Theater,14,3.08
+Indie,Theater,13,2.86
+Rap,Theater,13,2.86
+Latin,Theater,12,2.64
+Punk,Theater,11,2.42
+Ex-Yu Hits,Workshop,13,2.86
+Rock,Workshop,13,2.86
+House,Workshop,12,2.64
+Pop,Workshop,11,2.42
+Macedonian,Social Gathering,14,3.08
+Ex-Yu Hits,Social Gathering,13,2.86
+Rock,Social Gathering,13,2.86
+Hip-Hop,Social Gathering,12,2.64
+Pop,Social Gathering,12,2.64
+House,Social Gathering,11,2.42
+Techno,Social Gathering,11,2.42
+Balkan Party,Beach Party,42,9.23
+House,Beach Party,37,8.13
+Macedonian,Beach Party,37,8.13
+Ex-Yu Hits,Beach Party,36,7.91
+Pop,Beach Party,32,7.03
+Techno,Beach Party,32,7.03
+Disco,Beach Party,29,6.37
+Hip-Hop,Beach Party,27,5.93
+Rock,Beach Party,26,5.71
+Jazz,Beach Party,21,4.62
+Rap,Beach Party,19,4.18
+Electronic,Beach Party,18,3.96
+Retro,Beach Party,17,3.74
+Latin,Beach Party,17,3.74
+R&B,Beach Party,15,3.3
+Trance,Beach Party,12,2.64
+Folk,Beach Party,11,2.42
+Country,Beach Party,11,2.42
+Gig,Beach Party,11,2.42
+Ex-Yu Hits,Restaurant,25,5.49
+House,Restaurant,23,5.05
+Rock,Restaurant,22,4.84
+Macedonian,Restaurant,21,4.62
+Pop,Restaurant,19,4.18
+Balkan Party,Restaurant,18,3.96
+Techno,Restaurant,17,3.74
+Hip-Hop,Restaurant,17,3.74
+Jazz,Restaurant,17,3.74
+Disco,Restaurant,16,3.52
+R&B,Restaurant,14,3.08
+Rap,Restaurant,13,2.86
+Retro,Restaurant,12,2.64
+Electronic,Restaurant,11,2.42
+Gig,Restaurant,11,2.42

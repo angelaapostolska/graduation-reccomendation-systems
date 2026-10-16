@@ -36,6 +36,11 @@ LOCATION_TYPES = [
     "Live Music Venue", "Irish Pub", "Tapas Bar",
 ]
 
+# Project additions: venue types that exist in the real Findzzer venue list but
+# are missing from Findzzer's 31-type taxonomy (confirmed by the user).
+EXTRA_LOCATION_TYPES = ["Beach Bar", "Theater", "Workshop Space"]
+ALL_LOCATION_TYPES = LOCATION_TYPES + EXTRA_LOCATION_TYPES
+
 # Party types that plausibly carry a performer/artist (DJ, band, comedian, host).
 # Non-performer party types (e.g. Farmers Market, Marathon) never get one.
 PERFORMER_ELIGIBLE_PARTY_TYPES = {

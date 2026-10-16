@@ -4,3 +4,8 @@ __pycache__/
 generator/generated_events_sample.csv
 venv/
 .venv/
+
+# Local-only reference data (venues, performers, extracts from the Findzzer DB).
+# Public business and artist information; deliberately not published in this repo.
+generator/data/*
+!generator/data/README.md
