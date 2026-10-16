@@ -1,0 +1,6 @@
+__pycache__/
+*.pyc
+.env
+generator/generated_events_sample.csv
+venv/
+.venv/

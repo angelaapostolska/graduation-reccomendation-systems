@@ -1,0 +1,5 @@
+pandas
+psycopg[binary]
+pgvector
+python-dotenv
+openai
