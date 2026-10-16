@@ -37,18 +37,20 @@ from taxonomy import LOCATION_TYPES, PERFORMER_ELIGIBLE_PARTY_TYPES
 
 DISTRIBUTION_CSV = Path(__file__).parent / "genre_party_type_distribution.csv"
 
-# Small fixed set of fictional venues per location type, enough to let events
+# Small fixed set of FICTIONAL venues per location type, enough to let events
 # share a venue (needed for the graph's HOSTED_AT / shared-venue connections)
-# without needing a real venue database yet.
+# without needing a real venue database yet. None of these are real Findzzer
+# venues -- deliberately invented, so no fabricated event is ever attributed
+# to a real, identifiable business.
 FICTIONAL_VENUES = {
-    "Nightclub": ["Pulse Nightclub", "Stanica 26", "Vault Skopje"],
-    "Bar": ["Street Pub", "Beer Garden", "The Brass Tap"],
-    "Lounge": ["Octava Lounge Bar", "Velvet Lounge"],
-    "Live Music Venue": ["Rock Bar Krug", "The Cellar Stage"],
-    "Cocktail Bar": ["Cuban Cocktail Bar", "Bitters & Co."],
-    "Pub": ["Irish Times Pub", "The Local Pub"],
-    "Concert Venue": ["Arena 041", "Boris Trajkovski Hall"],
-    "Disco": ["Disco Palace", "Neon Floor"],
+    "Nightclub": ["Pulse Nightclub", "Afterglow Club", "Vault 12"],
+    "Bar": ["Low Tide Bar", "The Copper Keg", "Brass & Barrel"],
+    "Lounge": ["Velour Lounge", "Nightjar Lounge"],
+    "Live Music Venue": ["The Amber Stage", "Echo Hall"],
+    "Cocktail Bar": ["Juniper & Oak", "The Gilded Glass"],
+    "Pub": ["The Crooked Pint", "Harbor Light Pub"],
+    "Concert Venue": ["Meridian Arena", "The Foundry Hall"],
+    "Disco": ["Disco Mirage", "Neon Theory"],
 }
 
 CITIES = ["Skopje", "Ohrid", "Bitola"]
@@ -62,6 +64,8 @@ GENERATION_PROMPT = """
 You write short, factual Findzzer event listings -- a nightlife and culture
 events app. Findzzer's house style: 1-3 factual sentences, no marketing
 slogans, no hype words, no emoji, no hashtags. Keep it under 400 characters.
+Write in English, matching Findzzer's own convention of normalizing listings
+to English regardless of the event's regional context.
 
 Write ONE event with these fixed facts (do not change them):
 - Performer / host: {performer_name}
@@ -256,10 +260,45 @@ def write_events_csv(events: list[GeneratedEvent], output_path: Path) -> None:
             ])
 
 
+def build_openai_call(*, model: str = "gpt-4o-mini") -> Callable[[str], str]:
+    """Returns a call_llm function backed by the real OpenAI API. Reads
+    OPENAI_API_KEY from the environment (via .env, loaded with python-dotenv) --
+    never hardcode the key here."""
+    import os
+    from dotenv import load_dotenv
+    from openai import OpenAI
+
+    load_dotenv()
+    api_key = os.environ.get("OPENAI_API_KEY")
+    if not api_key:
+        raise RuntimeError(
+            "OPENAI_API_KEY is not set. Add it to your environment (see .env.example) "
+            "before requesting real LLM generation."
+        )
+    client = OpenAI(api_key=api_key)
+
+    def call_llm(prompt: str) -> str:
+        response = client.chat.completions.create(
+            model=model,
+            messages=[{"role": "user", "content": prompt}],
+            response_format={"type": "json_object"},
+        )
+        return response.choices[0].message.content
+
+    return call_llm
+
+
 if __name__ == "__main__":
-    dataset = generate_dataset(20, seed=42)  # no call_llm -> deterministic fallback
+    import os
+
+    use_real_llm = bool(os.environ.get("OPENAI_API_KEY"))
+    call_llm = build_openai_call() if use_real_llm else None
+
+    dataset = generate_dataset(20, seed=42, call_llm=call_llm)
     output_file = Path(__file__).parent / "generated_events_sample.csv"
     write_events_csv(dataset, output_file)
-    print(f"Wrote {len(dataset)} events to {output_file}")
+
+    mode = "OpenAI (gpt-4o-mini)" if use_real_llm else "deterministic fallback (no OPENAI_API_KEY set)"
+    print(f"Wrote {len(dataset)} events to {output_file} [{mode}]")
     for event in dataset[:5]:
         print(f"  {event.name!r} -- {event.music_genres} / {event.party_types} @ {event.venue_name}")
