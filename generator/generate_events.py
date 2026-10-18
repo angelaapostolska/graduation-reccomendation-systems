@@ -435,7 +435,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Generate synthetic Findzzer events.")
     parser.add_argument("--count", type=int, default=20)
     parser.add_argument("--seed", type=int, default=42)
-    parser.add_argument("--out", type=Path, default=HERE / "generated_events_sample.csv")
+    parser.add_argument("--out", type=Path, default=HERE / "proposal_generated_events_sample.csv")
     parser.add_argument("--no-llm", action="store_true", help="use the deterministic fallback text")
     parser.add_argument("--show-prompt", action="store_true", help="print one example prompt and exit")
     args = parser.parse_args()

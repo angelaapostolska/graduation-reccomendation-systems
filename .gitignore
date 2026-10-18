@@ -1,6 +1,7 @@
 __pycache__/
 *.pyc
 .env
+generator/proposal_*.csv
 generator/generated_events_sample.csv
 venv/
 .venv/

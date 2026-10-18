@@ -42,6 +42,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "generator"))
+sys.path.insert(0, str(ROOT / "mapping"))
 from taxonomy import MUSIC_GENRES  # noqa: E402
 
 DEFAULT_GENRE_SETS = [frozenset({"Gig"}), frozenset({"Hip-Hop", "Pop", "R&B"})]
@@ -171,6 +172,7 @@ def stage_base(args) -> None:
             "genre_status": "default_tag" if default_tag else ("real" if clean_genres else "none"),
             "party_types": "|".join(clean_parties),
             "details_original": (e["details"] or "").strip(),
+            "entrance_price_real": e["entrance_price"] or "",
         })
     rows.sort(key=lambda r: (r["date"], int(r["source_event_id"])))
     write_csv(out / "events_base.csv", rows)
@@ -307,27 +309,56 @@ def stage_performers(args) -> None:
 
 # ---------------------------------------------------------------- stage: descriptions
 
-DESCRIPTION_PROMPT = """You rewrite event listings for Findzzer, a nightlife and culture events app in North Macedonia. English only.
+DESCRIPTION_PROMPT = """You write event listings for Findzzer, a nightlife and culture events app in North Macedonia. English only.
 
-For each event you get: title, performers, venue, venue type(s), city, genres (may be empty), party types, and "caption" (raw text scraped from the venue's Instagram, may be empty, may be in Macedonian or English).
+For each event you get FACTS. Every fact you may use is in the input; nothing else is true.
+Input fields: title, performers, performer_style (what the performer usually plays, may be empty), venue, venue_types, city,
+genres (may be empty), genre_notes (neutral explanations of the genres), party_types, caption (raw text scraped from the venue's
+Instagram, may be empty or in Macedonian), and "extras": entrance, theme, promotion, dress_code, age_limit (each may be empty).
 
 Write for each event:
-- "name": the title in English / Latin script. Transliterate Cyrillic names; translate generic words (e.g. "Караоке" -> "Karaoke"). Keep performer names exactly as given in "performers" when the title is just the act.
-- "description": 1 or 2 plain factual sentences, under 220 characters, third person.
-- "genres": ONLY when the input genres are empty: up to 2 music genres chosen from the allowed list, if the title, performers or caption clearly support them; otherwise []. When genres are given, return them unchanged.
+- "name": the title in English / Latin script. Transliterate Cyrillic; translate generic words. If the title is just the act, use the name exactly as in "performers".
+- "description": two or three plain sentences, third person, under 330 characters.
+    Sentence 1: what the event is, who plays (if given), where (venue and city).
+    Sentence 2: the music, from genres, theme, genre_notes or performer_style. Skip it if none of those are given.
+    Sentence 3: practical details, ONLY the extras that are filled in (entrance, promotion, dress code, age limit) and concrete facts from the caption.
+  If very little is given, write one or two sentences. A short true description is better than a padded one.
+- "genres": ONLY when the input genres are empty: up to 2 genres from the allowed list, if title, performers or caption clearly support them; otherwise [].
 
-Description rules:
-- Use only facts present in the input. Never invent prices, times, guests, offers, sponsors or venue details.
-- Mention the venue by name and the performers by name when given.
-- Keep concrete facts from the caption that are not contact details or times (an offer, a theme, a named guest, a special occasion).
-- NEVER include phone numbers, email addresses, URLs, @handles or reservation instructions. Do not state dates or start times.
-- Banned: "Experience", "Join us", "Expect", "vibrant", "lively", "energetic", "perfect for", "unforgettable", exclamation marks, emoji, hashtags, second person ("you").
+Rules:
+- Use only the given facts. Never invent a price, time, guest, offer, dish, decor or venue detail. State each filled extra exactly once, in plain words ("Entry 300 MKD", "Free entry", "Dress code: smart casual", "18+", "Promotion: 2-for-1 cocktails").
+- Do not state dates, days of the week or any time of day ("9 PM", "21:30"). Never include phone numbers, e-mails, URLs, @handles or reservation instructions.
+- Do not describe atmosphere, mood or crowd. Banned words: vibrant, lively, energetic, unforgettable, perfect, amazing, great, cozy, electrifying, "good vibes", "night of", experience, join, expect, enjoy, celebrate, exclamation marks, emoji, hashtags, the words "you" and "your".
+- Use "known for X" only when performers are given, and only for performer_style; never as a promise about this event. The tag "Gig" is internal: never write it. Phrase theme as "Theme: X".
+- Put the filled extras in a short last sentence made of labelled parts, for example "Entry 300 MKD. Promotion: 2-for-1 cocktails. Dress code: smart casual. 18+." Do not blend them into other sentences.
 - Style reference: "Live music performance by Overtone at Octava Lounge Bar." / "Dance into the night with a DJ set by DJ Cena at Beer Garden."
-- If the input has too little to say more, a single short sentence is fine (e.g. "Karaoke night at Bajka 2D Bar in Skopje.").
 
 Allowed genres: {genres}
 
 Input is a JSON list. Return ONLY JSON: {{"results":[{{"id":int,"name":str,"description":str,"genres":[str]}}]}}"""
+
+
+BANNED = re.compile(
+    r"\b(vibrant|lively|energetic|unforgettable|perfect|amazing|great|cozy|electrifying|experience|join|expect|enjoy|celebrate|you|your)\b",
+    re.I,
+)
+TIME_OF_DAY = re.compile(r"\b\d{1,2}[:.]\d{2}\b|\b\d{1,2}\s?(am|pm)\b|\b(monday|tuesday|wednesday|thursday|friday|saturday|sunday)\b", re.I)
+NON_BMP = re.compile("[\U00010000-\U0010ffff\u2600-\u27bf]")
+
+
+def violations(text: str) -> list[str]:
+    found = []
+    if BANNED.search(text):
+        found.append("banned word: " + BANNED.search(text).group(0))
+    if TIME_OF_DAY.search(text):
+        found.append("time or weekday: " + TIME_OF_DAY.search(text).group(0))
+    if CONTACT.search(text):
+        found.append("contact detail")
+    if "!" in text or NON_BMP.search(text) or "#" in text:
+        found.append("exclamation mark, emoji or hashtag")
+    if len(text) > 340:
+        found.append("longer than 340 characters")
+    return found
 
 
 def keep_original(details: str) -> bool:
@@ -338,21 +369,41 @@ def keep_original(details: str) -> bool:
     )
 
 
+def caption_text(details: str) -> str:
+    return re.sub(r"^📌[^\n]*\n?", "", details).strip()
+
+
 def stage_descriptions(args) -> None:
+    from enrichment import GENRE_NOTES, enrich
+
     out = Path(args.out)
     events = read_csv(out / "events_base.csv")
-    perf_name = {r["performer_id"]: r["name"] for r in read_csv(out / "performers.csv")}
+    performers = read_csv(out / "performers.csv")
+    perf_name = {r["performer_id"]: r["name"] for r in performers}
+    perf_style = {r["name"]: [g for g in r["genres"].split("|") if g] for r in performers if int(r["events"]) >= 3}
     perf_by_event: dict[str, list[str]] = defaultdict(list)
     for r in read_csv(out / "event_performers.csv"):
         perf_by_event[r["source_event_id"]].append(perf_name[r["performer_id"]])
 
-    cache_path = out / "cache_descriptions.json"
+    def extras_for(e: dict) -> dict:
+        price = e.get("entrance_price_real", "")
+        return enrich(
+            e["source_event_id"],
+            e["music_genres"].split("|") if e["music_genres"] else [],
+            e["location_types"].split("|"),
+            float(price) if price not in ("", None) else None,
+            thin_caption=len(caption_text(e["details_original"])) < 40,
+        )
+
+    cache_path = out / "cache_descriptions_v4.json"
     cache = load_cache(cache_path)
     pool = [e for e in events if not keep_original(e["details_original"])]
     if args.sample:
         import random
         random.seed(11)
-        pool = random.sample(pool, args.sample)
+        thin = [e for e in pool if len(caption_text(e["details_original"])) < 40]
+        rich = [e for e in pool if len(caption_text(e["details_original"])) >= 40]
+        pool = random.sample(thin, args.sample * 3 // 5) + random.sample(rich, args.sample - args.sample * 3 // 5)
     todo = [e for e in pool if e["source_event_id"] not in cache]
     client = get_client() if todo else None
     system = DESCRIPTION_PROMPT.format(genres=", ".join(MUSIC_GENRES))
@@ -360,16 +411,34 @@ def stage_descriptions(args) -> None:
     def run(batch):
         payload = []
         for i, e in enumerate(batch):
-            caption = re.sub(r"^📌[^\n]*\n?", "", e["details_original"]).strip()
+            genres = [g for g in e["music_genres"].split("|") if g and g != "Gig"]
+            ex = extras_for(e)
+            performers_here = perf_by_event.get(e["source_event_id"], [])
             payload.append({
-                "id": i, "title": e["name_original"], "performers": perf_by_event.get(e["source_event_id"], []),
+                "id": i, "title": e["name_original"], "performers": performers_here,
+                "performer_style": sorted({g for n in performers_here for g in perf_style.get(n, []) if g != "Gig"})[:3],
                 "venue": e["venue_name"], "venue_types": e["location_types"].split("|"), "city": e["city"],
-                "genres": e["music_genres"].split("|") if e["music_genres"] else [],
+                "genres": genres, "genre_notes": {g: GENRE_NOTES[g] for g in genres if g in GENRE_NOTES},
                 "party_types": e["party_types"].split("|") if e["party_types"] else [],
-                "caption": caption[:600],
+                "caption": caption_text(e["details_original"])[:600],
+                "extras": {k: ex[k] for k in ("entrance", "theme", "promotion", "dress_code", "age_limit")},
             })
         res = llm_json(client, system, payload).get("results", [])
-        return {batch[r["id"]]["source_event_id"]: r for r in res if isinstance(r.get("id"), int) and 0 <= r["id"] < len(batch)}
+        results = {r["id"]: r for r in res if isinstance(r.get("id"), int) and 0 <= r["id"] < len(payload)}
+        # one retry for descriptions that break the rules, with the violations spelled out
+        bad = {i: violations(r.get("description", "")) for i, r in results.items()}
+        redo = [dict(payload[i], previous_attempt=results[i]["description"], violations=v) for i, v in bad.items() if v]
+        if redo:
+            for item in redo:
+                item["retry_id"] = item["id"]
+            again = llm_json(client, system + "\nEach item may carry previous_attempt and violations: rewrite it so that none of those violations remain.",
+                             redo).get("results", [])
+            for r in again:
+                if isinstance(r.get("id"), int) and r["id"] in results and not violations(r.get("description", "")):
+                    results[r["id"]] = r
+        for i, r in results.items():
+            r["violations"] = violations(r.get("description", ""))
+        return {batch[i]["source_event_id"]: r for i, r in results.items()}
 
     batches = [todo[i:i + 8] for i in range(0, len(todo), 8)]
     if batches:
@@ -384,13 +453,15 @@ def stage_descriptions(args) -> None:
         sid = e["source_event_id"]
         if scope is not None and sid not in scope:
             continue
+        ex = extras_for(e)
         if keep_original(e["details_original"]):
             name, desc, genres, source = e["name_original"], e["details_original"], e["music_genres"], "kept_original"
         else:
             r = cache.get(sid)
             if not r:
                 continue
-            name, desc, source = r["name"], r["description"], "llm_rewrite"
+            name, desc = r["name"], r["description"]
+            source = "llm_rewrite" if not r.get("violations") else "llm_rewrite_needs_review"
             inferred = [g for g in (r.get("genres") or []) if g in MUSIC_GENRES]
             genres = e["music_genres"] or "|".join(inferred[:2])
         result.append({
@@ -399,19 +470,25 @@ def stage_descriptions(args) -> None:
             "location_types": e["location_types"], "music_genres": genres,
             "genre_source": "real" if e["music_genres"] else ("inferred" if genres else "none"),
             "party_types": e["party_types"], "performers": "|".join(perf_by_event.get(sid, [])),
+            "theme": ex["theme"], "dress_code": ex["dress_code"], "entrance": ex["entrance"],
+            "entrance_mkd": ex["entrance_mkd"], "entrance_source": ex["entrance_source"],
+            "promotion": ex["promotion"], "age_limit": ex["age_limit"],
+            "synthetic_fields": "|".join(ex["synthetic_fields"]),
             "name_original": e["name_original"], "details_original": e["details_original"],
         })
-    target = out / ("events_sample.csv" if args.sample else "events.csv")
+    target = out / ("proposal_events_sample.csv" if args.sample else "events.csv")
     if result:
         write_csv(target, result)
     print(f"{len(result)} events -> {target}  (kept original: {sum(r['description_source'] == 'kept_original' for r in result)})")
     if args.sample:
         for r in result:
+            extras = " | ".join(f"{k}: {r[k]}" for k in ("entrance", "theme", "promotion", "dress_code", "age_limit") if r[k])
             print(f"\n[{r['venue_name']}, {r['city']}] {r['name']}  <- {r['name_original']!r}"
                   f"\n   genres: {r['music_genres'] or '-'} ({r['genre_source']}) | party: {r['party_types'] or '-'}"
                   f" | performers: {r['performers'] or '-'}"
+                  f"\n   extras: {extras or '-'}  [synthetic: {r['synthetic_fields'] or '-'}]"
                   f"\n   NEW: {r['description']}"
-                  f"\n   OLD: {r['details_original'][:160].replace(chr(10), ' / ')}")
+                  f"\n   OLD: {r['details_original'][:200].replace(chr(10), ' / ')}")
 
 
 def main() -> None:
