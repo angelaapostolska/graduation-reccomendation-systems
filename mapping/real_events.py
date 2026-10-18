@@ -1,31 +1,4 @@
-"""
-Real-event extraction (pipeline step 2, option C: real events + synthetic fill-ins).
-
-Reads a local pg_dump of the Findzzer database and produces a clean, normalized
-corpus of the real events held at the curated venues in generator/data/venues.csv.
-
-Nothing this script reads or writes is committed: the dump, the venue list and all
-outputs (default: data/real/) are gitignored. Only the code is public.
-
-Stages (each can be run on its own; LLM stages cache their results so reruns are cheap):
-
-  base          dump + venues.csv  ->  events_base.csv
-                Keeps non-deleted events at the curated venues. Maps duplicate
-                venue templates to one venue. Treats default genre tags as missing
-                and drops "Private Party" (Findzzer's own classifier forbids it).
-  performers    events_base.csv    ->  performers.csv, event_performers.csv
-                LLM decides which event titles are performer names.
-  descriptions  events_base.csv    ->  events.csv
-                LLM rewrites each description in Findzzer house style (English,
-                only facts already present, no contact details) and fills in
-                genres that were only default tags.
-
-Usage:
-  python mapping/real_events.py base --dump forge.sql.gz
-  python mapping/real_events.py performers
-  python mapping/real_events.py descriptions --sample 20     # preview, prints rows
-  python mapping/real_events.py descriptions                  # full run
-"""
+"""Real-event extraction: base, performers and descriptions stages (see main() for usage)."""
 
 from __future__ import annotations
 
@@ -56,7 +29,7 @@ CYRILLIC = re.compile("[Ѐ-ӿ]")
 CONTACT = re.compile(r"(https?://|www\.|@\w|\+\d[\d\s/-]{6,}|\b\d{3}[\s/-]\d{3}[\s/-]\d{3,4}\b)")
 
 
-# ------------------------------------------------------------------ dump parsing
+# dump parsing
 
 
 def read_dump(path: Path) -> dict[str, list[dict]]:
@@ -104,15 +77,13 @@ def latin_tokens(text: str) -> list[str]:
 
 
 def name_supported(name: str, title: str, details: str) -> bool:
-    """Guard against the LLM inventing a performer: at least one meaningful token of
-    the name must (fuzzily) appear in the title or caption, after transliteration."""
     from difflib import SequenceMatcher
     source = latin_tokens(title) + latin_tokens(details)
     name_tokens = [t for t in latin_tokens(name) if len(t) >= 3 and t not in {"dj", "the", "and", "band"}] or latin_tokens(name)
     return any(SequenceMatcher(None, t, s).ratio() >= 0.75 for t in name_tokens for s in source)
 
 
-# --------------------------------------------------------------------- stage: base
+# stage: base
 
 
 def stage_base(args) -> None:
@@ -122,7 +93,6 @@ def stage_base(args) -> None:
     with open(args.venues, newline="", encoding="utf-8") as handle:
         venues = list(csv.DictReader(handle))
 
-    # template id -> curated venue id (Instagram handle first, exact normalized name second)
     by_handle: dict[str, list[dict]] = defaultdict(list)
     by_name: dict[str, list[dict]] = defaultdict(list)
     for t in db["venue_templates"]:
@@ -181,7 +151,7 @@ def stage_base(args) -> None:
     print(f"genre status: {dict(status)}; venues without a match in the dump: {unmatched or 'none'}")
 
 
-# ------------------------------------------------------------------- LLM helpers
+# LLM helpers
 
 
 def llm_json(client, system: str, payload) -> dict:
@@ -226,7 +196,7 @@ def read_csv(path: Path) -> list[dict]:
         return list(csv.DictReader(handle))
 
 
-# ----------------------------------------------------------------- stage: performers
+# stage: performers
 
 PERFORMER_PROMPT = """You classify event titles from a Macedonian nightlife and culture events app.
 For each title decide whether it is (or contains) the name of a PERFORMER: a DJ, band, singer, musician, comedian, collective or other named act.
@@ -307,7 +277,7 @@ def stage_performers(args) -> None:
           f"({rejected} links dropped: name not found in title or caption)")
 
 
-# ---------------------------------------------------------------- stage: descriptions
+# stage: descriptions
 
 DESCRIPTION_PROMPT = """You write event listings for Findzzer, a nightlife and culture events app in North Macedonia. English only.
 
@@ -362,7 +332,6 @@ def violations(text: str) -> list[str]:
 
 
 def keep_original(details: str) -> bool:
-    """A real, clean English description can stay as it is."""
     return (
         bool(details) and not details.startswith("📌") and not CYRILLIC.search(details)
         and not CONTACT.search(details) and 30 <= len(details) <= 300
@@ -425,7 +394,6 @@ def stage_descriptions(args) -> None:
             })
         res = llm_json(client, system, payload).get("results", [])
         results = {r["id"]: r for r in res if isinstance(r.get("id"), int) and 0 <= r["id"] < len(payload)}
-        # one retry for descriptions that break the rules, with the violations spelled out
         bad = {i: violations(r.get("description", "")) for i, r in results.items()}
         redo = [dict(payload[i], previous_attempt=results[i]["description"], violations=v) for i, v in bad.items() if v]
         if redo:

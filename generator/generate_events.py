@@ -1,29 +1,4 @@
-"""
-Generator script (pipeline step 3a).
-
-Produces synthetic Findzzer-shaped events: taxonomy-correct, weighted by real
-preference data, and anchored to real Findzzer venues and real performer names.
-
-Entities generated per event, matching the confirmed ontology:
-    Event, Venue, City, BusinessType (location type), Genre(s), PartyType(s),
-    Performer
-
-Consistency rules (these were the bugs in the first version):
-  * A venue is picked first. Its city and location type(s) are fixed facts from
-    data/venues.csv and never change between events.
-  * The party type must be plausible for that venue type (no "Festival" in a
-    theater, no "Workshop" in a nightclub). Within the allowed set, genre /
-    party-type pairs are still sampled by the real frequency weights.
-  * "Private Party" is never generated: Findzzer's own classification prompt
-    forbids it.
-  * Performers come from data/performers.csv (real names found in sample events)
-    plus a small pool of fictional ones, so the same performer can appear at
-    several events.
-
-The LLM call is injected as a plain function (call_llm: str -> str) so the script
-isn't tied to one provider. A deterministic fallback is used when no function is
-given, so the pipeline is testable without an API key.
-"""
+"""Synthetic event generator: venue first, then plausible party type, genres, performer and description."""
 
 from __future__ import annotations
 
@@ -49,8 +24,6 @@ PERFORMERS_CSV = DATA_DIR / "performers.csv"
 
 EXCLUDED_PARTY_TYPES = {"Private Party"}
 
-# Which party types are plausible at which venue type. Anything not listed
-# falls back to DEFAULT_PARTY_TYPES.
 DEFAULT_PARTY_TYPES = {"Bar", "Live Music", "Dj Set", "Concert"}
 VENUE_TYPE_PARTY_TYPES: dict[str, set[str]] = {
     "Bar": {"Bar", "Caffe Bar", "Live Music", "Karaoke Night", "Dj Set", "Concert", "Disco"},
@@ -64,11 +37,6 @@ VENUE_TYPE_PARTY_TYPES: dict[str, set[str]] = {
     "Beach Bar": {"Beach Party", "Dj Set", "Live Music", "Bar", "Caffe Bar", "Concert"},
 }
 
-# Standup Comedy is intentionally not generated yet: it needs a pool of
-# comedians, and the music-genre pairing in the source table makes no sense for it.
-
-# Which kinds of performer fit which party type. Only these party types get a
-# named performer; Workshop, Restaurant, Bar etc. get none.
 PARTY_TYPE_PERFORMER_KINDS: dict[str, set[str]] = {
     "Dj Set": {"dj"},
     "Disco": {"dj"},
@@ -182,7 +150,7 @@ class GeneratedEvent:
     performer_name: Optional[str]
 
 
-# --------------------------------------------------------------------------- data
+# data
 
 
 def load_weighted_combinations() -> list[GenreWeight]:
@@ -217,9 +185,6 @@ def load_real_performers() -> list[Performer]:
 
 
 def build_fictional_performers(per_genre_and_kind: int = 2) -> list[Performer]:
-    """Plausible Macedonian-style names, a few per genre and kind. Built once per
-    run so a performer can appear at several events. Electronic genres only get
-    DJs; other genres get DJs (club nights), bands and solo artists."""
     performers: list[Performer] = []
     used: set[str] = set()
 
@@ -245,7 +210,7 @@ def build_fictional_performers(per_genre_and_kind: int = 2) -> list[Performer]:
     return performers
 
 
-# ----------------------------------------------------------------------- sampling
+# sampling
 
 
 def allowed_party_types(venue: Venue) -> set[str]:
@@ -256,7 +221,6 @@ def allowed_party_types(venue: Venue) -> set[str]:
 
 
 def location_type_for(venue: Venue, party_type: str) -> str:
-    """The venue type this event leans on (matters for venues with two types)."""
     for location_type in venue.location_types:
         if party_type in VENUE_TYPE_PARTY_TYPES.get(location_type, DEFAULT_PARTY_TYPES):
             return location_type
@@ -370,7 +334,6 @@ def generate_dataset(
 
 
 def validate_events(events: list[GeneratedEvent]) -> list[str]:
-    """Checks the consistency rules. Returns a list of problems (empty = clean)."""
     venues = {v.venue_id: v for v in load_venues()}
     problems = []
     for e in events:
@@ -407,8 +370,6 @@ def write_events_csv(events: list[GeneratedEvent], output_path: Path) -> None:
 
 
 def build_openai_call(*, model: str = "gpt-4o-mini", temperature: float = 0.8) -> Callable[[str], str]:
-    """Real OpenAI-backed call_llm. Reads OPENAI_API_KEY from the environment
-    (or .env via python-dotenv); never hardcode the key."""
     import os
     from dotenv import load_dotenv
     from openai import OpenAI

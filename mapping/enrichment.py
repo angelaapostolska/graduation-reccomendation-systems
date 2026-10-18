@@ -1,26 +1,10 @@
-"""
-Event enrichment: extra, queryable facts for the dummy data set.
-
-Real Findzzer listings often carry details such as a theme night, an entry price or a
-promotion. Our real events mostly lack them (the Instagram captions are thin), so this
-module adds them as STRUCTURED fields, chosen by code with simple plausibility rules.
-The LLM only phrases them; it never invents a fact that is not in a field.
-
-Principles:
-  * Real values win. A real entrance price from the Findzzer database is always used.
-  * Everything else is synthetic and recorded as such (`synthetic_fields` column), so
-    the evaluation can include or exclude it.
-  * Events whose caption already contains real information are NOT enriched with
-    synthetic themes or promotions, to avoid contradicting the caption.
-  * Deterministic: the same event id always gets the same fields.
-"""
+"""Adds theme, entrance price, promotion, dress code and age limit to events."""
 
 from __future__ import annotations
 
 import hashlib
 import random
 
-# Neutral one-line explanations of genres, for the description writer. Not event facts.
 GENRE_NOTES = {
     "Balkan Party": "regional folk-pop and turbo-folk dance hits",
     "Ex-Yu Hits": "popular songs from the former Yugoslavia",
@@ -72,13 +56,12 @@ THEMES = {
     "Reggae": ["reggae and dancehall"],
 }
 
-# Probability that an event of this venue type has a stated (paid) entrance fee.
 P_PAID = {
     "Nightclub": 0.45, "Concert Venue": 0.7, "Theater": 0.9, "Workshop Space": 0.95,
     "Beach Bar": 0.25, "Bar": 0.12, "Pub": 0.10, "Restaurant": 0.05, "Cafe": 0.05,
 }
 P_FREE_STATED = 0.2  # of the events that are not paid
-# Price points in MKD, in the range of the real positive entrance prices (100-1250, median 600).
+# MKD
 PRICES = {
     "Nightclub": [200, 300, 400, 500, 600, 800],
     "Concert Venue": [300, 500, 600, 800, 1000, 1200],
@@ -122,11 +105,6 @@ def enrich(
     real_entrance: float | None,
     thin_caption: bool,
 ) -> dict:
-    """Returns the enrichment fields for one event.
-
-    real_entrance: price from the Findzzer database in MKD (0 = free), or None if unknown.
-    thin_caption: True when the caption holds no real information beyond the venue name.
-    """
     vtype = location_types[0]
     out = {"theme": "", "dress_code": "", "entrance": "", "entrance_mkd": "", "entrance_source": "",
            "promotion": "", "age_limit": "", "synthetic_fields": []}
@@ -137,7 +115,7 @@ def enrich(
         out["entrance"] = "Free entry" if real_entrance == 0 else f"Entry {int(real_entrance)} MKD"
 
     if not thin_caption:
-        return out  # real caption facts take precedence over synthetic ones
+        return out
 
     if real_entrance is None:
         r = _rng(event_id, "entrance")
