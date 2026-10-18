@@ -365,6 +365,11 @@ def fallback_description(name: str, e: dict, performers: list[str], genres: list
     return text + (" " + ". ".join(parts) + "." if parts else "")
 
 
+def valid_result(r) -> bool:
+    return (isinstance(r, dict) and isinstance(r.get("name"), str) and r["name"].strip()
+            and isinstance(r.get("description"), str) and r["description"].strip())
+
+
 def keep_original(details: str) -> bool:
     return (
         bool(details) and not details.startswith("📌") and not CYRILLIC.search(details)
@@ -426,7 +431,7 @@ def stage_descriptions(args) -> None:
         )
 
     cache_path = out / "cache_descriptions_v5.json"
-    cache = load_cache(cache_path)
+    cache = {k: v for k, v in load_cache(cache_path).items() if valid_result(v)}
     pool = [e for e in events if not keep_original(e["details_original"])]
     if args.sample:
         import random
@@ -472,7 +477,7 @@ def stage_descriptions(args) -> None:
                     results[r["id"]] = r
         for i, r in results.items():
             r["violations"] = violations(r.get("description", ""), shown[i])
-        return {batch[i]["source_event_id"]: r for i, r in results.items()}
+        return {batch[i]["source_event_id"]: r for i, r in results.items() if valid_result(r)}
 
     def safe_run(batch):
         try:
