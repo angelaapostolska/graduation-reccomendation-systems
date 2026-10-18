@@ -326,7 +326,7 @@ Input is a JSON list. Return ONLY JSON: {{"results":[{{"id":int,"name":str,"desc
 
 
 BANNED = re.compile(
-    r"\b(vibrant|lively|energetic|unforgettable|perfect|amazing|great|cozy|electrifying|experience|join|expect|enjoy|celebrate|you|your|delightful|memorable|wonderful|fantastic|exciting|enjoyable|atmosphere|ambiance|opportunity|chance)\b",
+    r"\b(vibrant|lively|energetic|unforgettable|perfect|amazing|great|cozy|electrifying|experience|join|expect|enjoy|celebrate|you|your|delightful|memorable|wonderful|fantastic|exciting|enjoyable|atmosphere|ambiance|opportunity|opportunities|chance)\b",
     re.I,
 )
 TIME_OF_DAY = re.compile(r"\b\d{1,2}[:.]\d{2}\b|\b\d{1,2}\s?(am|pm)\b|\b(monday|tuesday|wednesday|thursday|friday|saturday|sunday)\b", re.I)

@@ -35,6 +35,8 @@ VENUE_TYPE_PARTY_TYPES: dict[str, set[str]] = {
     "Theater": {"Theater", "Standup Comedy", "Concert"},
     "Workshop Space": {"Workshop", "Social Gathering"},
     "Beach Bar": {"Beach Party", "Dj Set", "Live Music", "Bar", "Caffe Bar", "Concert"},
+    "Coworking Space": {"Workshop", "Networking", "Convention"},
+    "Event Space": {"Workshop", "Networking", "Convention", "Social Gathering", "Theater"},
 }
 
 PARTY_TYPE_PERFORMER_KINDS: dict[str, set[str]] = {
@@ -274,7 +276,8 @@ def generate_one_event(
     *,
     call_llm: Optional[Callable[[str], str]] = None,
 ) -> GeneratedEvent:
-    venue = random.choice(venues)
+    usable = [v for v in venues if any(c.party_type in allowed_party_types(v) for c in combos)]
+    venue = random.choice(usable)
     allowed = allowed_party_types(venue)
     venue_combos = [c for c in combos if c.party_type in allowed]
 
