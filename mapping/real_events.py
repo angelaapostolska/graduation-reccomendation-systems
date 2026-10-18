@@ -337,8 +337,15 @@ META = re.compile(
 NON_BMP = re.compile("[\U00010000-\U0010ffff\u2600-\u27bf]")
 
 
-def violations(text: str, extras: dict | None = None) -> list[str]:
+AWKWARD = re.compile(r"\bfeatures (entry|free entry|promotion)\b", re.I)
+
+
+def violations(text: str, extras: dict | None = None, name: str = "") -> list[str]:
     found = []
+    if name:
+        text = text.replace(name, " ")
+    if AWKWARD.search(text):
+        found.append("awkward phrasing")
     for field, value in (extras or {}).items():
         if value and text.lower().count(str(value).lower()) > 1:
             found.append(f"repeats {field}")
@@ -383,13 +390,13 @@ def valid_result(r) -> bool:
 
 def keep_original(details: str) -> bool:
     return (
-        bool(details) and not details.startswith("📌") and not CYRILLIC.search(details)
+        bool(details) and not re.match(r"^[^\w]", details) and not CYRILLIC.search(details)
         and not CONTACT.search(details) and 30 <= len(details) <= 300
     )
 
 
 def caption_text(details: str) -> str:
-    return re.sub(r"^📌[^\n]*\n?", "", details).strip()
+    return re.sub(r"^[📌📍][^\n]*\n?", "", details).strip()
 
 
 def stage_descriptions(args) -> None:
@@ -476,7 +483,7 @@ def stage_descriptions(args) -> None:
         res = llm_json(client, system, payload).get("results", [])
         results = {r["id"]: r for r in res if isinstance(r, dict) and isinstance(r.get("id"), int) and 0 <= r["id"] < len(payload)}
         shown = {i: {k: v for k, v in payload[i]["extras"].items()} for i in results}
-        bad = {i: violations(r.get("description", ""), shown[i]) for i, r in results.items()}
+        bad = {i: violations(r.get("description", ""), shown[i], r.get("name", "")) for i, r in results.items()}
         redo = [dict(payload[i], previous_attempt=results[i]["description"], violations=v) for i, v in bad.items() if v]
         if redo:
             for item in redo:
@@ -484,10 +491,10 @@ def stage_descriptions(args) -> None:
             again = llm_json(client, system + "\nEach item may carry previous_attempt and violations: rewrite it so that none of those violations remain.",
                              redo).get("results", [])
             for r in again:
-                if isinstance(r, dict) and isinstance(r.get("id"), int) and r["id"] in results and not violations(r.get("description", ""), shown[r["id"]]):
+                if isinstance(r, dict) and isinstance(r.get("id"), int) and r["id"] in results and not violations(r.get("description", ""), shown[r["id"]], r.get("name", "")):
                     results[r["id"]] = r
         for i, r in results.items():
-            r["violations"] = violations(r.get("description", ""), shown[i])
+            r["violations"] = violations(r.get("description", ""), shown[i], r.get("name", ""))
         return {batch[i]["source_event_id"]: r for i, r in results.items() if valid_result(r)}
 
     def safe_run(batch):
@@ -522,7 +529,7 @@ def stage_descriptions(args) -> None:
             name, desc = r["name"], r["description"]
             source = "llm_rewrite"
             shown = {k: ex[k] for k in ("entrance", "theme", "promotion", "dress_code", "age_limit")}
-            if violations(desc, shown):
+            if violations(desc, shown, name):
                 genre_list = e["music_genres"].split("|") if e["music_genres"] else []
                 desc = fallback_description(name, e, perf_by_event.get(sid, []), genre_list, ex)
                 source = "template_fallback"
