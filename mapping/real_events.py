@@ -154,6 +154,9 @@ def stage_base(args) -> None:
 # LLM helpers
 
 
+USAGE = Counter()
+
+
 def llm_json(client, system: str, payload) -> dict:
     last = None
     for _ in range(3):
@@ -163,6 +166,9 @@ def llm_json(client, system: str, payload) -> dict:
                 messages=[{"role": "system", "content": system},
                           {"role": "user", "content": json.dumps(payload, ensure_ascii=False)}],
             )
+            USAGE["calls"] += 1
+            USAGE["in"] += r.usage.prompt_tokens
+            USAGE["out"] += r.usage.completion_tokens
             return json.loads(r.choices[0].message.content)
         except Exception as err:  # noqa: BLE001 - retry any transport / parse failure
             last = err
@@ -309,15 +315,18 @@ Input is a JSON list. Return ONLY JSON: {{"results":[{{"id":int,"name":str,"desc
 
 
 BANNED = re.compile(
-    r"\b(vibrant|lively|energetic|unforgettable|perfect|amazing|great|cozy|electrifying|experience|join|expect|enjoy|celebrate|you|your)\b",
+    r"\b(vibrant|lively|energetic|unforgettable|perfect|amazing|great|cozy|electrifying|experience|join|expect|enjoy|celebrate|you|your|delightful|memorable|wonderful|fantastic|exciting|enjoyable|atmosphere|ambiance|opportunity|chance)\b",
     re.I,
 )
 TIME_OF_DAY = re.compile(r"\b\d{1,2}[:.]\d{2}\b|\b\d{1,2}\s?(am|pm)\b|\b(monday|tuesday|wednesday|thursday|friday|saturday|sunday)\b", re.I)
 NON_BMP = re.compile("[\U00010000-\U0010ffff\u2600-\u27bf]")
 
 
-def violations(text: str) -> list[str]:
+def violations(text: str, extras: dict | None = None) -> list[str]:
     found = []
+    for field, value in (extras or {}).items():
+        if value and text.lower().count(str(value).lower()) > 1:
+            found.append(f"repeats {field}")
     if BANNED.search(text):
         found.append("banned word: " + BANNED.search(text).group(0))
     if TIME_OF_DAY.search(text):
@@ -354,6 +363,33 @@ def stage_descriptions(args) -> None:
     for r in read_csv(out / "event_performers.csv"):
         perf_by_event[r["source_event_id"]].append(perf_name[r["performer_id"]])
 
+    history: dict[str, Counter] = defaultdict(Counter)
+    support: Counter = Counter()
+    for e in events:
+        if e["genre_status"] == "real":
+            for n in perf_by_event.get(e["source_event_id"], []):
+                support[n] += 1
+                for g in e["music_genres"].split("|"):
+                    history[n][g] += 1
+
+    def history_genres(sid: str) -> list[str]:
+        votes: Counter = Counter()
+        for n in perf_by_event.get(sid, []):
+            if support[n] < 3:
+                continue
+            ranked = [(g, c / support[n]) for g, c in history[n].most_common() if g != "Gig"]
+            for rank, (g, share) in enumerate(ranked[:2]):
+                if share >= (0.5 if rank == 0 else 0.3):
+                    votes[g] += share
+        return [g for g, _ in votes.most_common(2)]
+
+    for e in events:
+        e["genre_source"] = "real" if e["music_genres"] else "none"
+        if not e["music_genres"]:
+            filled = history_genres(e["source_event_id"])
+            if filled:
+                e["music_genres"], e["genre_source"] = "|".join(filled), "performer_history"
+
     def extras_for(e: dict) -> dict:
         price = e.get("entrance_price_real", "")
         return enrich(
@@ -364,7 +400,7 @@ def stage_descriptions(args) -> None:
             thin_caption=len(caption_text(e["details_original"])) < 40,
         )
 
-    cache_path = out / "cache_descriptions_v4.json"
+    cache_path = out / "cache_descriptions_v5.json"
     cache = load_cache(cache_path)
     pool = [e for e in events if not keep_original(e["details_original"])]
     if args.sample:
@@ -373,6 +409,10 @@ def stage_descriptions(args) -> None:
         thin = [e for e in pool if len(caption_text(e["details_original"])) < 40]
         rich = [e for e in pool if len(caption_text(e["details_original"])) >= 40]
         pool = random.sample(thin, args.sample * 3 // 5) + random.sample(rich, args.sample - args.sample * 3 // 5)
+    if args.limit:
+        import random
+        random.seed(21)
+        pool = random.sample(pool, min(args.limit, len(pool)))
     todo = [e for e in pool if e["source_event_id"] not in cache]
     client = get_client() if todo else None
     system = DESCRIPTION_PROMPT.format(genres=", ".join(MUSIC_GENRES))
@@ -393,8 +433,9 @@ def stage_descriptions(args) -> None:
                 "extras": {k: ex[k] for k in ("entrance", "theme", "promotion", "dress_code", "age_limit")},
             })
         res = llm_json(client, system, payload).get("results", [])
-        results = {r["id"]: r for r in res if isinstance(r.get("id"), int) and 0 <= r["id"] < len(payload)}
-        bad = {i: violations(r.get("description", "")) for i, r in results.items()}
+        results = {r["id"]: r for r in res if isinstance(r, dict) and isinstance(r.get("id"), int) and 0 <= r["id"] < len(payload)}
+        shown = {i: {k: v for k, v in payload[i]["extras"].items()} for i in results}
+        bad = {i: violations(r.get("description", ""), shown[i]) for i, r in results.items()}
         redo = [dict(payload[i], previous_attempt=results[i]["description"], violations=v) for i, v in bad.items() if v]
         if redo:
             for item in redo:
@@ -402,21 +443,30 @@ def stage_descriptions(args) -> None:
             again = llm_json(client, system + "\nEach item may carry previous_attempt and violations: rewrite it so that none of those violations remain.",
                              redo).get("results", [])
             for r in again:
-                if isinstance(r.get("id"), int) and r["id"] in results and not violations(r.get("description", "")):
+                if isinstance(r, dict) and isinstance(r.get("id"), int) and r["id"] in results and not violations(r.get("description", ""), shown[r["id"]]):
                     results[r["id"]] = r
         for i, r in results.items():
-            r["violations"] = violations(r.get("description", ""))
+            r["violations"] = violations(r.get("description", ""), shown[i])
         return {batch[i]["source_event_id"]: r for i, r in results.items()}
+
+    def safe_run(batch):
+        try:
+            return run(batch)
+        except Exception as err:  # noqa: BLE001
+            print("batch skipped:", repr(err), file=sys.stderr)
+            return {}
 
     batches = [todo[i:i + 8] for i in range(0, len(todo), 8)]
     if batches:
         with ThreadPoolExecutor(8) as ex:
-            for part in ex.map(run, batches):
+            for n, part in enumerate(ex.map(safe_run, batches), 1):
                 cache.update(part)
+                if n % 10 == 0:
+                    cache_path.write_text(json.dumps(cache, ensure_ascii=False), encoding="utf-8")
         cache_path.write_text(json.dumps(cache, ensure_ascii=False), encoding="utf-8")
 
     result = []
-    scope = {e["source_event_id"] for e in pool} if args.sample else None
+    scope = {e["source_event_id"] for e in pool} if (args.sample or args.limit) else None
     for e in events:
         sid = e["source_event_id"]
         if scope is not None and sid not in scope:
@@ -432,11 +482,13 @@ def stage_descriptions(args) -> None:
             source = "llm_rewrite" if not r.get("violations") else "llm_rewrite_needs_review"
             inferred = [g for g in (r.get("genres") or []) if g in MUSIC_GENRES]
             genres = e["music_genres"] or "|".join(inferred[:2])
+            if not e["music_genres"] and inferred:
+                e["genre_source"] = "llm_inferred"
         result.append({
             "source_event_id": sid, "name": name, "description": desc, "description_source": source,
             "date": e["date"], "city": e["city"], "venue_id": e["venue_id"], "venue_name": e["venue_name"],
             "location_types": e["location_types"], "music_genres": genres,
-            "genre_source": "real" if e["music_genres"] else ("inferred" if genres else "none"),
+            "genre_source": e["genre_source"] if genres else "none",
             "party_types": e["party_types"], "performers": "|".join(perf_by_event.get(sid, [])),
             "theme": ex["theme"], "dress_code": ex["dress_code"], "entrance": ex["entrance"],
             "entrance_mkd": ex["entrance_mkd"], "entrance_source": ex["entrance_source"],
@@ -444,10 +496,16 @@ def stage_descriptions(args) -> None:
             "synthetic_fields": "|".join(ex["synthetic_fields"]),
             "name_original": e["name_original"], "details_original": e["details_original"],
         })
-    target = out / ("proposal_events_sample.csv" if args.sample else "events.csv")
+    target = out / (f"proposal_events_{args.limit}.csv" if args.limit else "proposal_events_sample.csv" if args.sample else "events.csv")
     if result:
         write_csv(target, result)
     print(f"{len(result)} events -> {target}  (kept original: {sum(r['description_source'] == 'kept_original' for r in result)})")
+    if args.limit:
+        cost = USAGE["in"] * 0.15 / 1e6 + USAGE["out"] * 0.60 / 1e6
+        print(f"description_source: {dict(Counter(r['description_source'] for r in result))}")
+        print(f"genre_source: {dict(Counter(r['genre_source'] for r in result))}")
+        print(f"events with a synthetic field: {sum(1 for r in result if r['synthetic_fields'])}")
+        print(f"API calls {USAGE['calls']}, tokens in {USAGE['in']:,} out {USAGE['out']:,}, estimated cost ${cost:.2f} (this run only)")
     if args.sample:
         for r in result:
             extras = " | ".join(f"{k}: {r[k]}" for k in ("entrance", "theme", "promotion", "dress_code", "age_limit") if r[k])
@@ -466,6 +524,7 @@ def main() -> None:
     parser.add_argument("--venues", default=str(ROOT / "generator" / "data" / "venues.csv"))
     parser.add_argument("--out", default=str(ROOT / "data" / "real"))
     parser.add_argument("--sample", type=int, default=0, help="descriptions stage: preview N events only")
+    parser.add_argument("--limit", type=int, default=0, help="descriptions stage: process a random N-event subset")
     args = parser.parse_args()
     if args.stage == "base":
         if not args.dump:
