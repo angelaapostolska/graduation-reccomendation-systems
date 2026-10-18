@@ -70,6 +70,17 @@ MK_TO_LATIN = {
 }
 
 
+def transliterate(text: str) -> str:
+    out = []
+    for ch in text:
+        low = MK_TO_LATIN.get(ch.lower())
+        if low is None:
+            out.append(ch)
+        else:
+            out.append(low.capitalize() if ch.isupper() else low)
+    return "".join(out)
+
+
 def latin_tokens(text: str) -> list[str]:
     lowered = "".join(MK_TO_LATIN.get(ch, ch) for ch in text.lower())
     ascii_text = unicodedata.normalize("NFKD", lowered).encode("ascii", "ignore").decode()
@@ -256,7 +267,7 @@ def stage_performers(args) -> None:
             continue
         for j, name in enumerate(r["performers"]):
             name = name.strip()
-            if len(name) < 2:
+            if len(name) < 2 or "@" in name:
                 continue
             if not name_supported(name, e["name_original"], e["details_original"]):
                 rejected += 1
@@ -519,6 +530,7 @@ def stage_descriptions(args) -> None:
             genres = e["music_genres"] or "|".join(inferred[:2])
             if not e["music_genres"] and inferred:
                 e["genre_source"] = "llm_inferred"
+        name, desc = transliterate(name), transliterate(desc)
         result.append({
             "source_event_id": sid, "name": name, "description": desc, "description_source": source,
             "date": e["date"], "city": e["city"], "venue_id": e["venue_id"], "venue_name": e["venue_name"],
