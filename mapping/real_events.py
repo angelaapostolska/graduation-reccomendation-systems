@@ -319,6 +319,10 @@ BANNED = re.compile(
     re.I,
 )
 TIME_OF_DAY = re.compile(r"\b\d{1,2}[:.]\d{2}\b|\b\d{1,2}\s?(am|pm)\b|\b(monday|tuesday|wednesday|thursday|friday|saturday|sunday)\b", re.I)
+META = re.compile(
+    r"\b(no (performers?|specific|music style|information)|not (mentioned|specified|provided)|unspecified|regular offerings)\b",
+    re.I,
+)
 NON_BMP = re.compile("[\U00010000-\U0010ffff\u2600-\u27bf]")
 
 
@@ -333,11 +337,32 @@ def violations(text: str, extras: dict | None = None) -> list[str]:
         found.append("time or weekday: " + TIME_OF_DAY.search(text).group(0))
     if CONTACT.search(text):
         found.append("contact detail")
+    if META.search(text):
+        found.append("meta commentary")
     if "!" in text or NON_BMP.search(text) or "#" in text:
         found.append("exclamation mark, emoji or hashtag")
     if len(text) > 340:
         found.append("longer than 340 characters")
     return found
+
+
+def fallback_description(name: str, e: dict, performers: list[str], genres: list[str], ex: dict) -> str:
+    where = f"at {e['venue_name']} in {e['city']}"
+    party = e["party_types"].split("|")[0] if e["party_types"] else ""
+    if performers:
+        lead = {"Dj Set": "DJ set", "Disco": "DJ set"}.get(party, "Live music" if party in ("Live Music", "Concert", "Bar", "Restaurant") else "Event")
+        text = f"{lead} by {', '.join(performers)} {where}."
+    else:
+        text = f"{name} {where}."
+    shown = [g for g in genres if g != "Gig"]
+    if shown:
+        text += f" Genres: {', '.join(shown)}."
+    if ex["theme"]:
+        text += f" Theme: {ex['theme']}."
+    parts = [ex["entrance"], f"Promotion: {ex['promotion']}" if ex["promotion"] else "",
+             f"Dress code: {ex['dress_code']}" if ex["dress_code"] else "", ex["age_limit"]]
+    parts = [p for p in parts if p]
+    return text + (" " + ". ".join(parts) + "." if parts else "")
 
 
 def keep_original(details: str) -> bool:
@@ -479,7 +504,12 @@ def stage_descriptions(args) -> None:
             if not r:
                 continue
             name, desc = r["name"], r["description"]
-            source = "llm_rewrite" if not r.get("violations") else "llm_rewrite_needs_review"
+            source = "llm_rewrite"
+            shown = {k: ex[k] for k in ("entrance", "theme", "promotion", "dress_code", "age_limit")}
+            if violations(desc, shown):
+                genre_list = e["music_genres"].split("|") if e["music_genres"] else []
+                desc = fallback_description(name, e, perf_by_event.get(sid, []), genre_list, ex)
+                source = "template_fallback"
             inferred = [g for g in (r.get("genres") or []) if g in MUSIC_GENRES]
             genres = e["music_genres"] or "|".join(inferred[:2])
             if not e["music_genres"] and inferred:
@@ -500,7 +530,10 @@ def stage_descriptions(args) -> None:
     if result:
         write_csv(target, result)
     print(f"{len(result)} events -> {target}  (kept original: {sum(r['description_source'] == 'kept_original' for r in result)})")
-    if args.limit:
+    missing = sum(1 for e in events if not keep_original(e["details_original"]) and e["source_event_id"] not in cache) if not (args.sample or args.limit) else 0
+    if missing:
+        print(f"WARNING: {missing} events have no LLM result yet; rerun to fill them")
+    if not args.sample:
         cost = USAGE["in"] * 0.15 / 1e6 + USAGE["out"] * 0.60 / 1e6
         print(f"description_source: {dict(Counter(r['description_source'] for r in result))}")
         print(f"genre_source: {dict(Counter(r['genre_source'] for r in result))}")
