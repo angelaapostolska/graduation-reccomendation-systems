@@ -41,8 +41,8 @@ def main() -> None:
     write_csv(out / "cities.csv", [{"city_id": i, "name": n, "country": "Macedonia"} for n, i in cities.items()])
     write_csv(out / "business_types.csv", [
         {"type_id": i, "name": n, "is_project_addition": str(n in EXTRA_LOCATION_TYPES).lower()} for n, i in types.items()])
-    write_csv(out / "genres.csv", [{"genre_id": i, "name": n} for n, i in genres.items()])
-    write_csv(out / "party_types.csv", [{"party_type_id": i, "name": n} for n, i in party_types.items()])
+    write_csv(out / "music_genres.csv", [{"music_genre_id": i, "name": n} for n, i in genres.items()])
+    write_csv(out / "event_types.csv", [{"event_type_id": i, "name": n} for n, i in party_types.items()])
     write_csv(out / "venues.csv", [
         {"venue_id": v["venue_id"], "name": v["name"], "city_id": cities[v["city"]], "instagram_url": v["instagram_url"],
          "is_fictional": "true" if v.get("is_fictional") == "1" else "false"} for v in venues])
@@ -74,24 +74,26 @@ def main() -> None:
         row = {c: e.get(c, "") for c in EVENT_COLUMNS if c not in ("event_date", "is_synthetic", "entrance_mkd")}
         row.update(event_date=e["date"], is_synthetic="true" if e["is_synthetic"] == "1" else "false",
                    entrance_mkd=e["entrance_mkd"])
-        event_rows.append({c: row[c] for c in EVENT_COLUMNS})
+        record = {c: row[c] for c in EVENT_COLUMNS}
+        record["music_genre_source"] = record.pop("genre_source")
+        event_rows.append(record)
         names = [n for n in e["performers"].split("|") if n]
         for g in filter(None, e["music_genres"].split("|")):
-            ev_genres.append({"event_id": e["event_id"], "genre_id": genres[g], "source": e["genre_source"]})
+            ev_genres.append({"event_id": e["event_id"], "music_genre_id": genres[g], "source": e["genre_source"]})
             if e["genre_source"] in ("real", "synthetic"):
                 for n in names:
                     performer_genre[(performer_id[norm(n)], genres[g])] += 1
         for p in filter(None, e["party_types"].split("|")):
-            ev_parties.append({"event_id": e["event_id"], "party_type_id": party_types[p]})
+            ev_parties.append({"event_id": e["event_id"], "event_type_id": party_types[p]})
         for n in names:
             ev_performers.append({"event_id": e["event_id"], "performer_id": performer_id[norm(n)]})
     write_csv(out / "events.csv", event_rows)
-    write_csv(out / "event_genres.csv", ev_genres)
-    write_csv(out / "event_party_types.csv", ev_parties)
+    write_csv(out / "event_music_genres.csv", ev_genres)
+    write_csv(out / "event_event_types.csv", ev_parties)
     write_csv(out / "event_performers.csv", sorted({(r["event_id"], r["performer_id"]): r for r in ev_performers}.values(),
                                                    key=lambda r: (r["event_id"], r["performer_id"])))
-    write_csv(out / "performer_genres.csv", [
-        {"performer_id": p, "genre_id": g, "event_count": c} for (p, g), c in sorted(performer_genre.items())])
+    write_csv(out / "performer_music_genres.csv", [
+        {"performer_id": p, "music_genre_id": g, "event_count": c} for (p, g), c in sorted(performer_genre.items())])
 
     counts = {p.stem: len(read_csv(p)) for p in sorted(out.glob("*.csv"))}
     print("tables written to", out)

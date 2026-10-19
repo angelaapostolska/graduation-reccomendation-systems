@@ -11,8 +11,8 @@ from dotenv import load_dotenv
 
 ROOT = Path(__file__).resolve().parent.parent
 LOAD_ORDER = [
-    "cities", "business_types", "venues", "venue_types", "genres", "party_types", "performers", "performer_genres",
-    "events", "event_genres", "event_party_types", "event_performers",
+    "cities", "business_types", "venues", "venue_types", "music_genres", "event_types", "performers", "performer_music_genres",
+    "events", "event_music_genres", "event_event_types", "event_performers",
 ]
 
 
@@ -28,7 +28,7 @@ def load_table(cur: psycopg.Cursor, table: str, path: Path) -> None:
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--tables", default=str(ROOT / "data" / "tables"))
-    parser.add_argument("--reset", action="store_true", help="drop all existing tables first")
+    parser.add_argument("--reset", action="store_true", help="wipe the public schema first")
     args = parser.parse_args()
     load_dotenv(ROOT / ".env")
     url = os.environ.get("DATABASE_URL")
@@ -37,9 +37,8 @@ def main() -> None:
 
     with psycopg.connect(url, autocommit=True) as conn, conn.cursor() as cur:
         if args.reset:
-            cur.execute("DROP VIEW IF EXISTS event_details")
-            for table in reversed(LOAD_ORDER):
-                cur.execute(f"DROP TABLE IF EXISTS {table} CASCADE")
+            cur.execute("DROP SCHEMA public CASCADE")
+            cur.execute("CREATE SCHEMA public")
         cur.execute((ROOT / "db" / "schema.sql").read_text(encoding="utf-8"))
         for table in LOAD_ORDER:
             load_table(cur, table, Path(args.tables) / f"{table}.csv")

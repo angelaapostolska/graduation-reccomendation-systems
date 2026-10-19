@@ -24,7 +24,7 @@
 ```sql
 SELECT count(*) FROM events;                       -- 5876
 SELECT * FROM event_details LIMIT 10;              -- events with venue, city, genres, performers
-SELECT g.name, count(*) FROM event_genres eg JOIN genres g USING (genre_id) GROUP BY 1 ORDER BY 2 DESC;
+SELECT g.name, count(*) FROM event_music_genres eg JOIN music_genres g USING (music_genre_id) GROUP BY 1 ORDER BY 2 DESC;
 ```
 
 ## Without Docker
