@@ -48,7 +48,7 @@ def main() -> None:
     arrays: dict[str, np.ndarray] = {}
     summary = {"nodes": {kind: len(frame) for kind, frame in nodes.items()}, "edges": {}}
     for kind, frame in nodes.items():
-        arrays[f"ids_{kind}"] = frame.iloc[:, 0].astype(str).to_numpy()
+        arrays[f"ids_{kind}"] = np.asarray(frame.iloc[:, 0].astype(str).tolist(), dtype=str)
 
     for name, (table, source_col, target_col, source_kind, target_kind) in EDGES.items():
         frame = pd.read_csv(tables / f"{table}.csv", dtype=str).dropna(subset=[source_col, target_col])
@@ -60,13 +60,13 @@ def main() -> None:
 
     events = nodes["event"]
     arrays["event_is_synthetic"] = events["is_synthetic"].astype(str).str.lower().eq("true").to_numpy()
-    arrays["event_origin"] = events["origin"].astype(str).to_numpy()
+    arrays["event_origin"] = np.asarray(events["origin"].astype(str).tolist(), dtype=str)
     genre_edges = pd.read_csv(tables / "event_music_genres.csv", dtype=str)
     genre_edges["event"] = genre_edges["event_id"].map(index["event"])
     genre_source = genre_edges.groupby("event")["source"].first()
     source_per_event = np.array(["none"] * len(events), dtype=object)
     source_per_event[genre_source.index.to_numpy(dtype=int)] = genre_source.to_numpy()
-    arrays["event_genre_source"] = source_per_event.astype(str)
+    arrays["event_genre_source"] = np.asarray(source_per_event.tolist(), dtype=str)
     summary["events_without_genre"] = int((source_per_event == "none").sum())
     summary["events_without_genre_real"] = int(((source_per_event == "none") & ~arrays["event_is_synthetic"]).sum())
 

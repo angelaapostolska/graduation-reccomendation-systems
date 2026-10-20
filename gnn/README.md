@@ -1,19 +1,21 @@
 # gnn
 
-Path 2: a graph neural network on the event ontology, compared with text-embedding search.
+Path 2: does adding the event ontology (venue, performer, genre, event type) improve search over text embeddings alone?
 
-Steps:
-
-1. `build_graph.py` exports the 12 tables as a heterogeneous graph (done).
-2. Shared evaluation set: test queries and graded relevant events (recall@10, nDCG@10, MRR).
-3. Text baselines: name + description, and name + description + all fields.
-4. Training task and split, including a controlled cold-start split.
-5. Train the heterogeneous GNN (event embeddings from text vectors plus graph neighbours).
-6. Retrieval with the fused embeddings, then evaluation against the baselines.
-7. Ablations: text only, graph only, combined; with and without synthetic extras.
+Each event gets a new vector built from its text vector and its graph neighbours. The query is still embedded with ada-002 and compared by cosine similarity, so the same queries can be run on the text vectors, the training-free graph vectors and the GNN vectors.
 
 ## Usage
 
 ```
-python gnn/build_graph.py     # reads data/tables/*.csv, writes data/graph/graph.npz and summary.json
+python gnn/build_graph.py            # tables -> data/graph/graph.npz
+python gnn/export_embeddings.py      # ada-002 event vectors -> data/graph/event_text.npy
+python gnn/smooth.py                 # training-free graph vectors -> event_smooth.npy
+python gnn/search.py --variant text
+python gnn/search.py --variant smooth
+python gnn/train.py                  # hides genre and event-type links, trains, writes event_gnn.npy
+python gnn/search.py --variant gnn
 ```
+
+Results are saved as `data/search_runs/results_<variant>.txt`, in the same format as the earlier model comparison.
+
+`train.py` reports a held-out check (hit@3 of the hidden genre and event-type links) against a text-neighbour baseline and a most-common baseline. The held-out events are chosen by series (same title at the same venue).
