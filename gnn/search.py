@@ -26,6 +26,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--variant", choices=list(FILES), required=True)
     parser.add_argument("--top", type=int, default=10)
+    parser.add_argument("--blend", type=float, default=1.0, help="gnn variant only: 1 = GNN vectors, 0 = text vectors, in between = a mix")
     parser.add_argument("--out", default="")
     args = parser.parse_args()
     load_dotenv(ROOT / ".env")
@@ -35,6 +36,11 @@ def main() -> None:
 
     events = np.load(GRAPH_DIR / FILES[args.variant]).astype(np.float32)
     events /= np.linalg.norm(events, axis=1, keepdims=True)
+    if args.variant == "gnn" and args.blend < 1.0:
+        text = np.load(GRAPH_DIR / FILES["text"]).astype(np.float32)
+        text /= np.linalg.norm(text, axis=1, keepdims=True)
+        events = (1 - args.blend) * text + args.blend * events
+        events /= np.linalg.norm(events, axis=1, keepdims=True)
     event_ids = np.load(GRAPH_DIR / "graph.npz", allow_pickle=False)["ids_event"]
     queries = np.array([item.embedding for item in OpenAI().embeddings.create(model=MODEL, input=QUERIES).data], dtype=np.float32)
     queries /= np.linalg.norm(queries, axis=1, keepdims=True)
@@ -57,7 +63,8 @@ def main() -> None:
                          f"{row['event_types'] or '-'} | {row['music_genres'] or '-'} | {price_text}")
             lines.append(f"     {row['description']}")
         lines.append("")
-    out = args.out or str(ROOT / "data" / "search_runs" / f"results_{args.variant}.txt")
+    suffix = f"_blend{args.blend:g}" if args.variant == "gnn" and args.blend < 1.0 else ""
+    out = args.out or str(ROOT / "data" / "search_runs" / f"results_{args.variant}{suffix}.txt")
     os.makedirs(os.path.dirname(out), exist_ok=True)
     with open(out, "w", encoding="utf-8") as handle:
         handle.write("\n".join(lines))
