@@ -13,7 +13,7 @@ from openai import OpenAI
 ROOT = Path(__file__).resolve().parent.parent
 COLUMNS = {"text-embedding-3-small": "embedding", "text-embedding-ada-002": "embedding_ada002"}
 SQL = """
-SELECT d.name, d.venue, d.city, d.music_genres, d.event_types, d.performers, d.entrance_mkd, d.description,
+SELECT d.name, d.event_date, d.start_time, d.venue, d.city, d.music_genres, d.event_types, d.performers, d.entrance_mkd, d.description,
        1 - (e.{col} <=> %s::vector) AS similarity
 FROM events e JOIN event_details d USING (event_id)
 WHERE e.{col} IS NOT NULL
@@ -27,9 +27,9 @@ def search(cur: psycopg.Cursor, client: OpenAI, query: str, top: int, model: str
     literal = "[" + ",".join(f"{x:.7f}" for x in vector) + "]"
     cur.execute(SQL.format(col=COLUMNS[model]), (literal, literal, top))
     print(f"\nQuery: {query}")
-    for rank, (name, venue, city, genres, types, performers, price, description, similarity) in enumerate(cur.fetchall(), 1):
+    for rank, (name, day, start, venue, city, genres, types, performers, price, description, similarity) in enumerate(cur.fetchall(), 1):
         price_text = "free" if price == 0 else f"{price} MKD" if price else "no price"
-        print(f"{rank:2}. [{similarity:.3f}] {name} | {venue}, {city} | {types or '-'} | {genres or '-'} | {price_text}")
+        print(f"{rank:2}. [{similarity:.3f}] {name} | {day} {start.strftime('%H:%M') if start else ''} | {venue}, {city} | {types or '-'} | {genres or '-'} | {price_text}")
         print(f"      {description}")
 
 

@@ -8,4 +8,6 @@ Run from the repository root. All inputs and outputs live in the gitignored `dat
 4. `python mapping/merge_events.py`: writes `data/events_final.csv`.
 5. `python mapping/build_tables.py`: writes the normalized tables to `data/tables/`.
 
-Then load them with `python db/load.py --reset` (see `db/README.md`).
+6. `python mapping/event_times.py --dump forge.sql.gz`: start and end times (real from the dump, generated for synthetic events), written to `data/tables/event_times.csv`.
+
+Then load them with `python db/load.py --reset` and `python db/add_times.py` (see `db/README.md`).

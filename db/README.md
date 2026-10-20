@@ -27,6 +27,10 @@ SELECT * FROM event_details LIMIT 10;              -- events with venue, city, g
 SELECT g.name, count(*) FROM event_music_genres eg JOIN music_genres g USING (music_genre_id) GROUP BY 1 ORDER BY 2 DESC;
 ```
 
+## Event times
+
+After loading (or on an existing database), run `python mapping/event_times.py --dump forge.sql.gz` and then `python db/add_times.py`. It adds `start_time`, `end_time` and `time_source` to `events` and to the `event_details` view. No embeddings change.
+
 ## Without Docker
 
 Install PostgreSQL 16 and the pgvector extension (macOS: `brew install postgresql@16 pgvector`; Linux: `apt install postgresql-16-pgvector`). Create a database, then `CREATE EXTENSION vector;` as a superuser.

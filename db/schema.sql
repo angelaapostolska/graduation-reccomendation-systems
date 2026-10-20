@@ -71,6 +71,9 @@ CREATE TABLE events (
     includes            text,
     music_genre_source        text NOT NULL,
     synthetic_fields    text,
+    start_time          time,
+    end_time            time,
+    time_source         text,
     embedding           vector(1536)
 );
 
@@ -119,7 +122,9 @@ SELECT e.event_id,
        e.entrance_mkd,
        e.theme,
        e.promotion,
-       e.is_synthetic
+       e.is_synthetic,
+       e.start_time,
+       e.end_time
 FROM events e
 JOIN venues v USING (venue_id)
 JOIN cities c USING (city_id);

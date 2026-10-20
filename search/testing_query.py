@@ -23,7 +23,7 @@ QUERIES = [
     "beach party with DJ",
 ]
 SQL = """
-SELECT d.name, d.event_date, d.venue, d.city, d.event_types, d.music_genres, d.entrance_mkd, d.description,
+SELECT d.name, d.event_date, d.start_time, d.venue, d.city, d.event_types, d.music_genres, d.entrance_mkd, d.description,
        1 - (e.{col} <=> %s::vector) AS similarity
 FROM events e JOIN event_details d USING (event_id)
 WHERE e.{col} IS NOT NULL
@@ -53,9 +53,9 @@ def main() -> None:
             cur.execute(SQL.format(col=COLUMNS[args.model]), (literal, literal, args.top))
             lines.append(f'query searched: "{query}" (model: {args.model})')
             lines.append("events matched:")
-            for rank, (name, day, venue, city, types, genres, price, description, score) in enumerate(cur.fetchall(), 1):
+            for rank, (name, day, start, venue, city, types, genres, price, description, score) in enumerate(cur.fetchall(), 1):
                 price_text = "free" if price == 0 else f"{price} MKD" if price else "no price"
-                lines.append(f"  {rank}. [{score:.3f}] {name} | {day} | {venue}, {city} | {types or '-'} | {genres or '-'} | {price_text}")
+                lines.append(f"  {rank}. [{score:.3f}] {name} | {day} {start.strftime('%H:%M') if start else ''} | {venue}, {city} | {types or '-'} | {genres or '-'} | {price_text}")
                 lines.append(f"     {description}")
             lines.append("")
     out.write_text("\n".join(lines), encoding="utf-8")
