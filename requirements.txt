@@ -3,3 +3,4 @@ psycopg[binary]
 pgvector
 python-dotenv
 openai
+sentence-transformers

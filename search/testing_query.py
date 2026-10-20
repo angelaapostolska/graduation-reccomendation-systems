@@ -1,17 +1,16 @@
-"""Runs a list of test queries and saves what each returns. Usage: python search/testing_query.py [--top 10] [--model text-embedding-ada-002] [--out file]"""
+"""Runs a list of test queries and saves what each returns. Usage: python search/testing_query.py [--top 10] [--model distilbert] [--out file]"""
 
 from __future__ import annotations
 
 import argparse
-import os
 from pathlib import Path
 
 import psycopg
 from dotenv import load_dotenv
-from openai import OpenAI
+
+from embedders import MODELS, check_env, embed, literal
 
 ROOT = Path(__file__).resolve().parent.parent
-COLUMNS = {"text-embedding-3-small": "embedding", "text-embedding-ada-002": "embedding_ada002"}
 QUERIES = [
     "free techno night in Skopje",
     "cheap standup comedy in Skopje",
@@ -34,23 +33,19 @@ LIMIT %s
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--model", choices=list(COLUMNS), default="text-embedding-3-small")
+    parser.add_argument("--model", choices=list(MODELS), default="text-embedding-3-small")
     parser.add_argument("--top", type=int, default=10)
     parser.add_argument("--out", default="")
     args = parser.parse_args()
     load_dotenv(ROOT / ".env")
-    url = os.environ.get("DATABASE_URL")
-    if not url or not os.environ.get("OPENAI_API_KEY"):
-        raise SystemExit("DATABASE_URL and OPENAI_API_KEY must be set in .env")
-    client = OpenAI()
+    url = check_env(args.model)
     out = Path(args.out) if args.out else ROOT / "data" / "search_runs" / f"results_{args.model}.txt"
     out.parent.mkdir(parents=True, exist_ok=True)
-    vectors = client.embeddings.create(model=args.model, input=QUERIES).data
+    vectors, _ = embed(args.model, QUERIES)
     lines: list[str] = []
     with psycopg.connect(url) as conn, conn.cursor() as cur:
-        for query, item in zip(QUERIES, vectors):
-            literal = "[" + ",".join(f"{x:.7f}" for x in item.embedding) + "]"
-            cur.execute(SQL.format(col=COLUMNS[args.model]), (literal, literal, args.top))
+        for query, vector in zip(QUERIES, vectors):
+            cur.execute(SQL.format(col=MODELS[args.model]["column"]), (literal(vector), literal(vector), args.top))
             lines.append(f'query searched: "{query}" (model: {args.model})')
             lines.append("events matched:")
             for rank, (name, day, venue, city, types, genres, price, description, score) in enumerate(cur.fetchall(), 1):
