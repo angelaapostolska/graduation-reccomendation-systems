@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import re
 from pathlib import Path
 
 import psycopg
@@ -31,19 +32,36 @@ LIMIT %s
 """
 
 
+def read_picks(path: Path) -> list[set[str]]:
+    """Events (name and date) listed under each query of a saved results file."""
+    picks: list[set[str]] = []
+    for line in path.read_text(encoding="utf-8").splitlines():
+        if line.startswith("query searched:"):
+            picks.append(set())
+        elif re.match(r"\s+\d+\. \[", line) and picks:
+            name, day = [part.strip() for part in line.split("] ", 1)[1].split(" | ")[:2]]
+            picks[-1].add(f"{name}|{day}")
+    return picks
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--model", choices=list(MODELS), default="text-embedding-3-small")
     parser.add_argument("--top", type=int, default=10)
     parser.add_argument("--out", default="")
+    parser.add_argument("--exact", action="store_true", help="compare the query with every event instead of using the approximate index")
     args = parser.parse_args()
     load_dotenv(ROOT / ".env")
     url = check_env(args.model)
-    out = Path(args.out) if args.out else ROOT / "data" / "search_runs" / f"results_{args.model}.txt"
+    suffix = "_exact" if args.exact else ""
+    out = Path(args.out) if args.out else ROOT / "data" / "search_runs" / f"results_{args.model}{suffix}.txt"
     out.parent.mkdir(parents=True, exist_ok=True)
     vectors, _ = embed(args.model, QUERIES)
     lines: list[str] = []
     with psycopg.connect(url) as conn, conn.cursor() as cur:
+        if args.exact:
+            cur.execute("SET enable_indexscan = off")
+            cur.execute("SET enable_bitmapscan = off")
         for query, vector in zip(QUERIES, vectors):
             cur.execute(SQL.format(col=MODELS[args.model]["column"]), (literal(vector), literal(vector), args.top))
             lines.append(f'query searched: "{query}" (model: {args.model})')
@@ -55,6 +73,12 @@ def main() -> None:
             lines.append("")
     out.write_text("\n".join(lines), encoding="utf-8")
     print(f"saved {len(QUERIES)} queries to {out}")
+    earlier = out.with_name(f"results_{args.model}.txt")
+    if args.exact and earlier.exists():
+        old, new = read_picks(earlier), read_picks(out)
+        print("events in the exact top 10 that the approximate search did not return, per query:")
+        for query, before, after in zip(QUERIES, old, new):
+            print(f'  "{query}": {len(after - before)} of {len(after)}')
 
 
 if __name__ == "__main__":
