@@ -100,8 +100,10 @@ def run(query: str, profile: dict, features: dict, scores: np.ndarray, weight: f
 
     def row(e: int) -> dict:
         r = events.iloc[e]
-        return {"name": r["name"], "date": r["event_date"], "city": r.get("city", ""), "cosine": float(scores[e]), "boost": float(values[e]),
-                "plain_rank": plain_rank[e], "passes_filters": bool(allowed[e])}
+        tags = [genres[j] for j in np.nonzero(features["event_genre"][e] == 1.0)[0]]
+        kinds = [types[j] for j in np.nonzero(features["event_type"][e] > 0)[0]]
+        return {"name": r["name"], "date": r["event_date"], "city": r.get("city", ""), "venue": r.get("venue", ""), "types": kinds, "tags": tags,
+                "cosine": float(scores[e]), "boost": float(values[e]), "plain_rank": plain_rank[e], "passes_filters": bool(allowed[e])}
 
     return {"notes": notes, "plain": [row(e) for e in plain], "hybrid": [row(e) for e in hybrid]}
 
@@ -111,16 +113,14 @@ def show(result: dict, query: str, profile_name: str, weight: float) -> None:
     for note in result["notes"]:
         print("  note:", note)
     plain_names = {(r["name"], r["date"]) for r in result["plain"]}
-    print(f'\n{"PLAIN ada-002":<58}| HYBRID')
-    for i in range(max(len(result["plain"]), len(result["hybrid"]))):
-        left = result["plain"][i] if i < len(result["plain"]) else None
-        right = result["hybrid"][i] if i < len(result["hybrid"]) else None
-        l = f'{i + 1:>2}. {left["name"][:34]} {left["date"]}{"" if left["passes_filters"] else " (fails date filter)"}' if left else ""
-        r = ""
-        if right:
-            mark = "" if (right["name"], right["date"]) in plain_names else f'  NEW (was #{right["plain_rank"]}, boost {right["boost"]:.2f})'
-            r = f'{i + 1:>2}. {right["name"][:34]} {right["date"]}{mark}'
-        print(f"{l:<58}| {r}")
+    for title, rows in (("PLAIN ada-002", result["plain"]), ("HYBRID", result["hybrid"])):
+        print(f"\n{title}")
+        for i, r in enumerate(rows, 1):
+            flag = "" if r["passes_filters"] else "  [fails date filter]"
+            if title == "HYBRID" and (r["name"], r["date"]) not in plain_names:
+                flag += f"  NEW (was #{r['plain_rank']} in plain search, boost {r['boost']:.2f})"
+            print(f"{i:>2}. {r['name']} | {r['date']} | {r['venue']}, {r['city']}  (cosine {r['cosine']:.3f}){flag}")
+            print(f"      type: {', '.join(r['types']) or '-'} | genres: {', '.join(r['tags']) or 'none'}")
 
 
 def main() -> None:
@@ -157,6 +157,7 @@ def main() -> None:
     cities = pd.read_csv(f"{args.tables}/cities.csv").set_index("city_id")["name"]
     venues = pd.read_csv(f"{args.tables}/venues.csv").set_index("venue_id")["city_id"]
     features["events"]["city"] = features["events"]["venue_id"].map(venues).map(cities)
+    features["events"]["venue"] = features["events"]["venue_id"].map(pd.read_csv(f"{args.tables}/venues.csv").set_index("venue_id")["name"])
     vectors = np.load(ROOT / "data" / "graph" / "event_text.npy").astype(np.float32)
     vectors /= np.linalg.norm(vectors, axis=1, keepdims=True)
     assert len(vectors) == len(features["events"]), "events.csv and the saved vectors do not match"
