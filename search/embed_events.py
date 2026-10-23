@@ -1,4 +1,4 @@
-"""Computes text embeddings (event name + description). Usage: python search/embed_events.py [--model text-embedding-ada-002|distilbert]"""
+"""Computes text embeddings (event name + description). Usage: python search/embed_events.py [--model text-embedding-ada-002|distilbert|minilm|bge-small|text-embedding-3-large]"""
 
 from __future__ import annotations
 
@@ -9,7 +9,7 @@ from pathlib import Path
 import psycopg
 from dotenv import load_dotenv
 
-from embedders import MODELS, check_env, embed, literal
+from embedders import MAX_INDEXED_DIM, MODELS, check_env, embed, literal
 
 ROOT = Path(__file__).resolve().parent.parent
 
@@ -48,8 +48,11 @@ def main() -> None:
             )
             conn.commit()
             print(f"  {min(start + args.batch, len(rows))}/{len(rows)}")
-        cur.execute(f"CREATE INDEX IF NOT EXISTS events_{column}_idx ON events USING hnsw ({column} vector_cosine_ops)")
-        conn.commit()
+        if dim <= MAX_INDEXED_DIM:
+            cur.execute(f"CREATE INDEX IF NOT EXISTS events_{column}_idx ON events USING hnsw ({column} vector_cosine_ops)")
+            conn.commit()
+        else:
+            print(f"no index: pgvector indexes hold at most {MAX_INDEXED_DIM} dimensions, {args.model} has {dim}; search is exact")
         print(f"done: {tokens:,} tokens, about ${tokens * price / 1e6:.3f}")
 
 

@@ -22,7 +22,7 @@ LIMIT %s
 
 
 def search(cur: psycopg.Cursor, query: str, top: int, model: str) -> None:
-    vector = literal(embed(model, [query])[0][0])
+    vector = literal(embed(model, [query], is_query=True)[0][0])
     cur.execute(SQL.format(col=MODELS[model]["column"]), (vector, vector, top))
     print(f"\nQuery: {query}")
     for rank, (name, venue, city, genres, types, performers, price, description, similarity) in enumerate(cur.fetchall(), 1):
