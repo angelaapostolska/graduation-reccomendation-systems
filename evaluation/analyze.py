@@ -12,15 +12,16 @@ from pathlib import Path
 
 import numpy as np
 
-MODELS = ["distilbert", "minilm", "bge-small", "text-embedding-ada-002", "text-embedding-3-small", "text-embedding-3-large"]
-SHORT = {"distilbert": "DistilBERT", "minilm": "MiniLM", "bge-small": "bge-small", "text-embedding-ada-002": "ada-002",
+MODELS = ["gnn", "distilbert", "minilm", "bge-small", "text-embedding-ada-002", "text-embedding-3-small", "text-embedding-3-large"]
+SHORT = {"gnn": "GNN", "distilbert": "DistilBERT", "minilm": "MiniLM", "bge-small": "bge-small", "text-embedding-ada-002": "ada-002",
          "text-embedding-3-small": "3-small", "text-embedding-3-large": "3-large"}
 SMALL = ["distilbert", "minilm", "bge-small"]
 LARGE = ["text-embedding-ada-002", "text-embedding-3-small", "text-embedding-3-large"]
 PAIRS = [("text-embedding-ada-002", "text-embedding-3-small"), ("text-embedding-3-large", "text-embedding-ada-002"),
          ("text-embedding-3-large", "text-embedding-3-small"), ("bge-small", "minilm"), ("bge-small", "distilbert"),
          ("minilm", "distilbert"), ("text-embedding-3-small", "bge-small"), ("text-embedding-ada-002", "bge-small"),
-         ("text-embedding-3-large", "bge-small")]
+         ("text-embedding-3-large", "bge-small"),
+         ("gnn", "text-embedding-ada-002"), ("gnn", "text-embedding-3-small"), ("gnn", "bge-small"), ("gnn", "distilbert")]
 ORIGINAL_8 = 8
 HEAD = re.compile(r"\s+(\d+)\. \[([\d.\-]+)\] (.*)")
 
@@ -35,12 +36,15 @@ def read_run(path: Path) -> tuple[list[str], list[list[tuple[str, str, str]]]]:
             parts = [p.strip() for p in HEAD.match(line).group(3).split(" | ")]
             place = parts[2]
             venue = place.rpartition(", ")[0] or place
-            ranked[-1].append((parts[0], parts[1], venue))
+            ranked[-1].append((parts[0], parts[1], venue))  # a name that contains " | " is matched on its first part, as on the grading pages
     return queries, ranked
 
 
 def load_runs(folder: Path):
     runs, queries = {}, None
+    if not (folder / "results_gnn_exact.txt").exists():
+        MODELS.remove("gnn")  # the graph network is optional
+        PAIRS[:] = [p for p in PAIRS if "gnn" not in p]
     for model in MODELS:
         queries, runs[model] = read_run(folder / f"results_{model}_exact.txt")
     return queries, runs
@@ -186,7 +190,7 @@ def main() -> None:
         rows = []
         for m in MODELS:
             a = arr[m][sl]
-            rows.append([SHORT[m], "small" if m in SMALL else "large", *(f"{a[:, k].mean():.3f}" for k in range(3))])
+            rows.append([SHORT[m], "small" if m in SMALL else "graph" if m == "gnn" else "large", *(f"{a[:, k].mean():.3f}" for k in range(3))])
         return rows
 
     hdr = ["Model", "Group", "Strict P@10", "Lenient P@10", "nDCG@10"]
