@@ -13,6 +13,8 @@ import torch.nn.functional as F
 ROOT = Path(__file__).resolve().parent.parent
 # the stripped-text test runs the same scripts on another folder: GRAPH_DIR=data/graph_stripped python gnn/train.py
 GRAPH_DIR = Path(os.environ.get("GRAPH_DIR", ROOT / "data" / "graph"))
+# left out of the graph step by default, because a performer's genres are worked out from all of the performer's events, including the ones hidden in the
+# tag-recovery test. For search nothing is hidden, so the fixed graph switches them on (see use_fixed_graph).
 EXCLUDED_RELATIONS = {"performer__associated_with__music_genre"}
 TARGETS = {
     "genre": ("event__has_genre__music_genre", "music_genre"),
@@ -52,6 +54,13 @@ def message_edges(graph: dict, hidden_events: torch.Tensor | None) -> dict:
         out[name] = (source_kind, target_kind, source, target)
         out[name + "_rev"] = (target_kind, source_kind, target, source)
     return out
+
+
+def use_fixed_graph() -> dict:
+    """The fixed graph: performer genres are used, and the label nodes (genres, event types, venue types, cities) start as the vector of their own name.
+    Returns the name vectors. Call it before the network is built."""
+    EXCLUDED_RELATIONS.clear()
+    return load_names()
 
 
 def load_names(path: Path | None = None) -> dict | None:

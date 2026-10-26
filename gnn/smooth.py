@@ -8,7 +8,7 @@ import numpy as np
 import torch
 import torch.nn.functional as F
 
-from common import GRAPH_DIR, initial_features, load_graph, load_names, message_edges, smooth
+from common import GRAPH_DIR, initial_features, load_graph, message_edges, smooth, use_fixed_graph
 
 
 def main() -> None:
@@ -16,13 +16,13 @@ def main() -> None:
     parser.add_argument("--text", default=str(GRAPH_DIR / "event_text.npy"))
     parser.add_argument("--alpha", type=float, default=0.5, help="weight of the neighbour average")
     parser.add_argument("--iterations", type=int, default=2)
-    parser.add_argument("--named", action="store_true", help="label nodes start as the vector of their own name (run gnn/node_names.py first)")
+    parser.add_argument("--fixed", action="store_true", help="the fixed graph: label nodes start as the vector of their own name and performer genres are used (run gnn/node_names.py first)")
     args = parser.parse_args()
     graph = load_graph()
     x = F.normalize(torch.from_numpy(np.load(args.text)).float(), dim=1)
-    features = initial_features(graph, x, ignore_events=None, names=load_names() if args.named else None)
+    features = initial_features(graph, x, ignore_events=None, names=use_fixed_graph() if args.fixed else None)
     vectors = smooth(features, message_edges(graph, None), alpha=args.alpha, iterations=args.iterations)["event"]
-    suffix = "_named" if args.named else ""
+    suffix = "_fixed" if args.fixed else ""
     np.save(GRAPH_DIR / f"event_smooth{suffix}.npy", F.normalize(vectors, dim=1).numpy())
     print(f"saved event_smooth{suffix}.npy ({tuple(vectors.shape)}), mean cosine to the text vectors {float((vectors * x).sum(1).mean()):.3f}")
 

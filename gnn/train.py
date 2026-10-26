@@ -12,7 +12,7 @@ import numpy as np
 import torch
 import torch.nn.functional as F
 
-from common import GRAPH_DIR, ROOT, TARGETS, Net, initial_features, load_graph, load_names, message_edges, smooth
+from common import GRAPH_DIR, ROOT, TARGETS, Net, initial_features, load_graph, message_edges, smooth, use_fixed_graph
 
 
 def series_split(tables: str, count: int, fraction: float, seed: int) -> torch.Tensor:
@@ -87,7 +87,7 @@ def main() -> None:
     parser.add_argument("--drift", type=float, default=1.0, help="weight of the penalty that keeps event vectors close to their text vector")
     parser.add_argument("--patience", type=int, default=100)
     parser.add_argument("--seed", type=int, default=7)
-    parser.add_argument("--named", action="store_true", help="label nodes start as the vector of their own name (run gnn/node_names.py first)")
+    parser.add_argument("--fixed", action="store_true", help="the fixed graph: label nodes start as the vector of their own name and performer genres are used (run gnn/node_names.py first)")
     args = parser.parse_args()
     torch.manual_seed(args.seed)
 
@@ -98,7 +98,7 @@ def main() -> None:
     train_mask = ~val
     print(f"events: {n_events}, training {int(train_mask.sum())}, held out {int(val.sum())} (split by series)")
 
-    names = load_names() if args.named else None
+    names = use_fixed_graph() if args.fixed else None
     features = initial_features(graph, x, ignore_events=val, names=names)
     net = Net(graph, x.shape[1], rank=args.rank)
     optimizer = torch.optim.AdamW(net.parameters(), lr=args.lr, weight_decay=1e-4)
@@ -148,7 +148,7 @@ def main() -> None:
     with torch.no_grad():
         gnn_vectors = F.normalize(net.encode(final_features, final_edges)["event"], dim=1)
         smooth_vectors = F.normalize(smooth(final_features, final_edges)["event"], dim=1)
-    suffix = "_named" if args.named else ""
+    suffix = "_fixed" if args.fixed else ""
     np.save(GRAPH_DIR / f"event_gnn{suffix}.npy", gnn_vectors.numpy())
     np.save(GRAPH_DIR / f"event_smooth{suffix}.npy", smooth_vectors.numpy())
     torch.save(best_state, GRAPH_DIR / f"net{suffix}.pt")

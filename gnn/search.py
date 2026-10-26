@@ -18,7 +18,7 @@ from common import GRAPH_DIR, ROOT
 sys.path.insert(0, str(ROOT / "search"))
 from testing_query import QUERIES  # noqa: E402
 
-FILES = {"text": "event_text.npy", "smooth": "event_smooth.npy", "gnn": "event_gnn.npy", "smooth_named": "event_smooth_named.npy", "gnn_named": "event_gnn_named.npy"}
+FILES = {"text": "event_text.npy", "smooth": "event_smooth.npy", "gnn": "event_gnn.npy", "smooth_fixed": "event_smooth_fixed.npy", "gnn_fixed": "event_gnn_fixed.npy"}
 MODEL = "text-embedding-ada-002"
 
 
