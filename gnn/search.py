@@ -18,7 +18,7 @@ from common import GRAPH_DIR, ROOT
 sys.path.insert(0, str(ROOT / "search"))
 from testing_query import QUERIES  # noqa: E402
 
-FILES = {"text": "event_text.npy", "smooth": "event_smooth.npy", "gnn": "event_gnn.npy"}
+FILES = {"text": "event_text.npy", "smooth": "event_smooth.npy", "gnn": "event_gnn.npy", "smooth_named": "event_smooth_named.npy", "gnn_named": "event_gnn_named.npy"}
 MODEL = "text-embedding-ada-002"
 
 
@@ -36,7 +36,7 @@ def main() -> None:
 
     events = np.load(GRAPH_DIR / FILES[args.variant]).astype(np.float32)
     events /= np.linalg.norm(events, axis=1, keepdims=True)
-    if args.variant == "gnn" and args.blend < 1.0:
+    if args.variant.startswith("gnn") and args.blend < 1.0:
         text = np.load(GRAPH_DIR / FILES["text"]).astype(np.float32)
         text /= np.linalg.norm(text, axis=1, keepdims=True)
         events = (1 - args.blend) * text + args.blend * events

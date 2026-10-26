@@ -54,8 +54,18 @@ def message_edges(graph: dict, hidden_events: torch.Tensor | None) -> dict:
     return out
 
 
-def initial_features(graph: dict, event_vectors: torch.Tensor, ignore_events: torch.Tensor | None) -> dict:
-    """Event nodes start as their text vector; every other node starts as the mean of the nodes connected to it."""
+def load_names(path: Path | None = None) -> dict | None:
+    """Vectors of the names of the label nodes (genres, event types, venue types, cities), written by gnn/node_names.py."""
+    path = path or GRAPH_DIR / "node_names.npz"
+    if not Path(path).exists():
+        raise SystemExit(f"{path} not found: run python gnn/node_names.py first")
+    data = np.load(path, allow_pickle=False)
+    return {kind: torch.from_numpy(data[kind]).float() for kind in data.files}
+
+
+def initial_features(graph: dict, event_vectors: torch.Tensor, ignore_events: torch.Tensor | None, names: dict | None = None) -> dict:
+    """Event nodes start as their text vector; every other node starts as the mean of the nodes connected to it.
+    With names, the label nodes start as the vector of their own name instead ("Karaoke Night" means karaoke night)."""
     features = {"event": event_vectors}
     dim = event_vectors.shape[1]
     sums = {kind: torch.zeros(count, dim) for kind, count in graph["counts"].items() if kind != "event"}
@@ -83,6 +93,8 @@ def initial_features(graph: dict, event_vectors: torch.Tensor, ignore_events: to
             counts[target_kind].index_add_(0, target, torch.ones(len(target)))
     for kind in sums:
         features[kind] = F.normalize(sums[kind] / counts[kind].clamp(min=1).unsqueeze(1), dim=1)
+    for kind, vectors in (names or {}).items():
+        features[kind] = F.normalize(vectors, dim=1)
     return features
 
 

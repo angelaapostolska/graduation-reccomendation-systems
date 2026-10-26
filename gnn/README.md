@@ -41,3 +41,16 @@ GRAPH_DIR=data/graph_stripped python gnn/search.py --variant gnn    --out data/s
 ```
 
 Words that are also venue types, languages or ordinary words (Bar, Restaurant, Caffe Bar, Other, Macedonian, Gig, Vinyl, Retro, Country, Alternative) are not stripped. Queries are not changed.
+
+## Labelled graph (names of the genre and event-type nodes)
+
+In the first graph, a label node such as "Karaoke Night" started as the average of the vectors of the events that carry it, and the name itself was never turned into a vector. As long as the event texts contain the genre words the average still carries their meaning; once the words are stripped from the texts it carries none. In the labelled graph the genre, event-type, venue-type and city nodes start as the ada-002 vector of their own name.
+
+```
+python gnn/node_names.py                 # embeds the 242 label names (a fraction of a cent), saves data/graph/node_names.npz
+python gnn/smooth.py --named
+python gnn/train.py --named
+python gnn/search.py --variant smooth_named --out data/search_runs/results_named_smooth.txt
+python gnn/search.py --variant gnn_named    --out data/search_runs/results_named_gnn.txt
+```
+The same four commands work on the stripped texts with `GRAPH_DIR=data/graph_stripped` in front. The named variants write their own files (`_named`), so the earlier results are not overwritten.

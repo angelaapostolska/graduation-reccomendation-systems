@@ -12,7 +12,7 @@ import numpy as np
 import torch
 import torch.nn.functional as F
 
-from common import GRAPH_DIR, ROOT, TARGETS, Net, initial_features, load_graph, message_edges, smooth
+from common import GRAPH_DIR, ROOT, TARGETS, Net, initial_features, load_graph, load_names, message_edges, smooth
 
 
 def series_split(tables: str, count: int, fraction: float, seed: int) -> torch.Tensor:
@@ -87,6 +87,7 @@ def main() -> None:
     parser.add_argument("--drift", type=float, default=1.0, help="weight of the penalty that keeps event vectors close to their text vector")
     parser.add_argument("--patience", type=int, default=100)
     parser.add_argument("--seed", type=int, default=7)
+    parser.add_argument("--named", action="store_true", help="label nodes start as the vector of their own name (run gnn/node_names.py first)")
     args = parser.parse_args()
     torch.manual_seed(args.seed)
 
@@ -97,7 +98,8 @@ def main() -> None:
     train_mask = ~val
     print(f"events: {n_events}, training {int(train_mask.sum())}, held out {int(val.sum())} (split by series)")
 
-    features = initial_features(graph, x, ignore_events=val)
+    names = load_names() if args.named else None
+    features = initial_features(graph, x, ignore_events=val, names=names)
     net = Net(graph, x.shape[1], rank=args.rank)
     optimizer = torch.optim.AdamW(net.parameters(), lr=args.lr, weight_decay=1e-4)
     best, best_state, waited = -1.0, None, 0
@@ -140,19 +142,20 @@ def main() -> None:
         print(f"  {target} ({values['events']} events): GNN {values['gnn_hit@3']:.3f} / {values['gnn_hit@1']:.3f}, "
               f"text neighbours {values['text_knn_hit@3']:.3f} / {values['text_knn_hit@1']:.3f}, most common {values['prior_hit@3']:.3f} / {values['prior_hit@1']:.3f}")
 
-    final_features = initial_features(graph, x, ignore_events=None)
+    final_features = initial_features(graph, x, ignore_events=None, names=names)
     final_edges = message_edges(graph, None)
     net.eval()
     with torch.no_grad():
         gnn_vectors = F.normalize(net.encode(final_features, final_edges)["event"], dim=1)
         smooth_vectors = F.normalize(smooth(final_features, final_edges)["event"], dim=1)
-    np.save(GRAPH_DIR / "event_gnn.npy", gnn_vectors.numpy())
-    np.save(GRAPH_DIR / "event_smooth.npy", smooth_vectors.numpy())
-    torch.save(best_state, GRAPH_DIR / "net.pt")
-    (GRAPH_DIR / "link_prediction.json").write_text(json.dumps(report, indent=2), encoding="utf-8")
+    suffix = "_named" if args.named else ""
+    np.save(GRAPH_DIR / f"event_gnn{suffix}.npy", gnn_vectors.numpy())
+    np.save(GRAPH_DIR / f"event_smooth{suffix}.npy", smooth_vectors.numpy())
+    torch.save(best_state, GRAPH_DIR / f"net{suffix}.pt")
+    (GRAPH_DIR / f"link_prediction{suffix}.json").write_text(json.dumps(report, indent=2), encoding="utf-8")
     drift = float((gnn_vectors * x).sum(1).mean())
     print(f"\nmean cosine between GNN and text vectors: {drift:.3f}")
-    print(f"saved event_gnn.npy, event_smooth.npy in {GRAPH_DIR}")
+    print(f"saved event_gnn{suffix}.npy, event_smooth{suffix}.npy in {GRAPH_DIR}")
 
 
 if __name__ == "__main__":
