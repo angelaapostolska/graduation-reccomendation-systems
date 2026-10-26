@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 import numpy as np
@@ -10,7 +11,8 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 ROOT = Path(__file__).resolve().parent.parent
-GRAPH_DIR = ROOT / "data" / "graph"
+# the stripped-text test runs the same scripts on another folder: GRAPH_DIR=data/graph_stripped python gnn/train.py
+GRAPH_DIR = Path(os.environ.get("GRAPH_DIR", ROOT / "data" / "graph"))
 EXCLUDED_RELATIONS = {"performer__associated_with__music_genre"}
 TARGETS = {
     "genre": ("event__has_genre__music_genre", "music_genre"),

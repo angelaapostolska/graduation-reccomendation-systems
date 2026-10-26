@@ -25,3 +25,19 @@ Results are saved as `data/search_runs/results_<variant>.txt`, in the same forma
 The defaults of `train.py` are the settings used for every reported result: learning rate 0.0003, patience 100, drift penalty 1.0, up to 400 epochs, seed 7. Running `python gnn/train.py` and then `python gnn/search.py --variant gnn` reproduces them.
 
 The first version (v1) used learning rate 0.001, patience 40, drift penalty 0.1 and 300 epochs. It can still be run with `python gnn/train.py --lr 0.001 --patience 40 --drift 0.1 --epochs 300`. On the first 8 test queries v1 scored 0.24 strict P@10 and v2 scored 0.51.
+
+## Stripped-text test
+
+The event texts copy the genre and type tags ("Techno night at Izlet"), so plain text search has the answer in the text. This test removes the ontology's genre and event-type words from every event text, embeds the stripped texts with ada-002, and runs the same graph scripts on them. The tags stay in the graph, so the graph can supply what the text no longer says.
+
+```
+python gnn/stripped_text.py --dry-run     # statistics and before/after examples, no API call
+python gnn/stripped_text.py               # embeds the stripped texts, saves data/graph_stripped/ (about $0.03)
+GRAPH_DIR=data/graph_stripped python gnn/smooth.py
+GRAPH_DIR=data/graph_stripped python gnn/train.py
+GRAPH_DIR=data/graph_stripped python gnn/search.py --variant text   --out data/search_runs/results_stripped_text.txt
+GRAPH_DIR=data/graph_stripped python gnn/search.py --variant smooth --out data/search_runs/results_stripped_smooth.txt
+GRAPH_DIR=data/graph_stripped python gnn/search.py --variant gnn    --out data/search_runs/results_stripped_gnn.txt
+```
+
+Words that are also venue types, languages or ordinary words (Bar, Restaurant, Caffe Bar, Other, Macedonian, Gig, Vinyl, Retro, Country, Alternative) are not stripped. Queries are not changed.
